@@ -1,0 +1,496 @@
+---
+title: Express Adapter
+description: Add xmcp to your Express.js application
+---
+
+## Overview
+
+The Express adapter provides the simplest way to add MCP capabilities to your Express.js applications. It's a single function that handles all MCP requests with minimal configuration.
+
+## Installation
+
+Install xmcp and Express in your project:
+
+```bash
+npm install xmcp express
+npm install -D @types/express
+```
+
+## Quick Start
+
+### 1. Configure xmcp
+
+Create `xmcp.config.ts` in your project root:
+
+```typescript xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+  experimental: {
+    adapter: "express",
+  },
+};
+
+export default config;
+```
+
+### 2. Set up Express Server
+
+Create your Express server with the xmcp handler:
+
+```typescript src/index.ts
+import express from "express";
+import { xmcpHandler } from "@xmcp/adapter";
+
+const app = express();
+const port = 3002;
+
+// Add the MCP endpoint
+app.get("/mcp", xmcpHandler);
+app.post("/mcp", xmcpHandler);
+
+app.listen(port, () => {
+  console.log(`🚀 Server running on http://localhost:${port}`);
+});
+
+export default app;
+```
+
+### 3. Create Tools
+
+Create tools in your `src/tools` directory (or as configured):
+
+```typescript src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+// Define the schema for tool parameters
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+// Define tool metadata
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+// Tool implementation
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  const result = `Hello, ${name}!`;
+
+  return {
+    content: [{ type: "text", text: result }],
+  };
+}
+```
+
+## Development
+
+Run both xmcp and your Express server:
+
+```bash
+xmcp dev & tsx watch src/index.ts
+```
+
+Configure your `package.json`:
+
+```json package.json
+{
+  "scripts": {
+    "dev": "xmcp dev & tsx watch src/index.ts",
+    "build": "xmcp build && tsx src/index.ts",
+    "start": "node dist/index.js"
+  }
+}
+```
+
+## Integration with Express Middleware
+
+The xmcp handler works seamlessly with Express middleware:
+
+### JSON Body Parser
+
+xmcp requires JSON body parsing:
+
+```typescript src/index.ts
+import express from "express";
+import { xmcpHandler } from "@xmcp/adapter";
+
+const app = express();
+
+// Enable JSON body parsing
+app.use(express.json());
+
+app.post("/mcp", xmcpHandler);
+```
+
+### CORS Middleware
+
+Add CORS support for browser-based clients:
+
+```typescript src/index.ts
+import express from "express";
+import cors from "cors";
+import { xmcpHandler } from "@xmcp/adapter";
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+app.post("/mcp", xmcpHandler);
+```
+
+<Note>
+  The xmcp adapter automatically sets CORS headers based on your configuration. Custom CORS middleware may override these settings.
+</Note>
+
+### Authentication Middleware
+
+Add custom authentication:
+
+```typescript src/middleware/auth.ts
+import { Request, Response, NextFunction } from "express";
+
+export async function authMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const user = await verifyToken(token);
+    req.user = user;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+}
+```
+
+```typescript src/index.ts
+import { authMiddleware } from "./middleware/auth";
+
+// Apply auth to MCP endpoint
+app.post("/mcp", authMiddleware, xmcpHandler);
+```
+
+### Logging Middleware
+
+Log MCP requests:
+
+```typescript src/index.ts
+import morgan from "morgan";
+
+app.use(morgan("combined"));
+app.post("/mcp", xmcpHandler);
+```
+
+## Advanced Configuration
+
+### Custom Paths
+
+Configure where xmcp looks for tools, prompts, and resources:
+
+```typescript xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+  experimental: {
+    adapter: "express",
+  },
+  paths: {
+    tools: "src/tools",
+    prompts: "src/prompts",
+    resources: "src/resources",
+  },
+};
+
+export default config;
+```
+
+### CORS Configuration
+
+Customize CORS settings through xmcp config:
+
+```typescript xmcp.config.ts
+const config: XmcpConfig = {
+  http: {
+    port: 3002,
+    cors: {
+      origin: "https://example.com",
+      credentials: true,
+      methods: ["GET", "POST", "OPTIONS"],
+    },
+  },
+  experimental: {
+    adapter: "express",
+  },
+};
+```
+
+## Complete Example
+
+Here's a full Express application with xmcp:
+
+```typescript src/index.ts
+import express from "express";
+import { xmcpHandler } from "@xmcp/adapter";
+
+const app = express();
+const port = 3002;
+
+// Middleware
+app.use(express.json());
+
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+// MCP endpoint
+app.get("/mcp", xmcpHandler);
+app.post("/mcp", xmcpHandler);
+
+// Other routes
+app.get("/", (req, res) => {
+  res.json({
+    name: "My MCP Server",
+    endpoints: {
+      mcp: "/mcp",
+      health: "/health",
+    },
+  });
+});
+
+// Error handling
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: "Something went wrong!" });
+});
+
+app.listen(port, () => {
+  console.log(`🚀 Server running on http://localhost:${port}`);
+  console.log(`📡 MCP endpoint: http://localhost:${port}/mcp`);
+});
+
+export default app;
+```
+
+## API Reference
+
+### `xmcpHandler`
+
+Express request handler for MCP requests.
+
+```typescript
+export async function xmcpHandler(
+  req: Request,
+  res: Response
+): Promise<void>
+```
+
+- **Parameters:**
+  - `req`: Express Request object
+  - `res`: Express Response object
+- **Returns:** Promise that resolves when request is handled
+- **Note:** Automatically handles CORS, body parsing, and error responses
+
+## Error Handling
+
+The adapter handles errors automatically and returns JSON-RPC 2.0 error responses:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32603,
+    "message": "Internal server error"
+  },
+  "id": null
+}
+```
+
+Common error codes:
+- `-32700`: Parse error
+- `-32600`: Invalid request
+- `-32601`: Method not found
+- `-32603`: Internal error
+
+## Working with Resources
+
+Create dynamic resources in your Express app:
+
+```typescript src/resources/(config)/app.ts
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  uri: "config://app",
+  name: "Application Config",
+  description: "Current application configuration",
+  mimeType: "application/json",
+};
+
+export default async function getAppConfig() {
+  return {
+    contents: [
+      {
+        uri: "config://app",
+        mimeType: "application/json",
+        text: JSON.stringify(
+          {
+            name: "My Express MCP Server",
+            version: "1.0.0",
+            environment: process.env.NODE_ENV,
+          },
+          null,
+          2
+        ),
+      },
+    ],
+  };
+}
+```
+
+## Working with Prompts
+
+Add prompt templates:
+
+```typescript src/prompts/review-code.ts
+import { z } from "zod";
+import { type InferSchema, type PromptMetadata } from "xmcp";
+
+export const schema = {
+  code: z.string().describe("The code to review"),
+  language: z.string().optional().describe("Programming language"),
+};
+
+export const metadata: PromptMetadata = {
+  name: "review-code",
+  description: "Review code for best practices and potential issues",
+};
+
+export default async function reviewCode({
+  code,
+  language = "typescript",
+}: InferSchema<typeof schema>) {
+  return {
+    messages: [
+      {
+        role: "user" as const,
+        content: {
+          type: "text" as const,
+          text: `Please review this ${language} code:\n\n${code}\n\nProvide feedback on:\n- Code quality\n- Best practices\n- Potential bugs\n- Security issues`,
+        },
+      },
+    ],
+  };
+}
+```
+
+## Example Project Structure
+
+```
+my-express-app/
+├── src/
+│   ├── tools/
+│   │   ├── greet.ts
+│   │   └── calculate.ts
+│   ├── prompts/
+│   │   └── review-code.ts
+│   ├── resources/
+│   │   └── (config)/
+│   │       └── app.ts
+│   ├── middleware/
+│   │   └── auth.ts
+│   └── index.ts                 # Express server
+├── xmcp.config.ts               # xmcp configuration
+├── package.json
+└── tsconfig.json
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use JSON body parser">
+    Always enable JSON body parsing before the xmcp handler:
+
+    ```typescript
+    app.use(express.json());
+    ```
+  </Accordion>
+
+  <Accordion title="Handle both GET and POST">
+    Export handlers for both methods for better client compatibility:
+
+    ```typescript
+    app.get("/mcp", xmcpHandler);
+    app.post("/mcp", xmcpHandler);
+    ```
+  </Accordion>
+
+  <Accordion title="Set appropriate body size limits">
+    Configure body size limits for large requests:
+
+    ```typescript
+    app.use(express.json({ limit: "10mb" }));
+    ```
+  </Accordion>
+
+  <Accordion title="Use environment variables">
+    Store configuration in environment variables:
+
+    ```typescript
+    const port = process.env.PORT || 3002;
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Request body is empty">
+    Ensure JSON body parser is enabled:
+
+    ```typescript
+    app.use(express.json());
+    ```
+  </Accordion>
+
+  <Accordion title="CORS errors">
+    xmcp handles CORS automatically based on config. If issues persist, check your CORS middleware order.
+  </Accordion>
+
+  <Accordion title="Tools not loading">
+    Run `xmcp build` to compile your tools and verify paths in `xmcp.config.ts`.
+  </Accordion>
+
+  <Accordion title="Port already in use">
+    Change the port in your server configuration or kill the process using the port.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building Tools" icon="wrench" href="/building/tools">
+    Learn how to create powerful tools
+  </Card>
+  <Card title="NestJS Adapter" icon="shield" href="/adapters/nestjs">
+    Check out the NestJS adapter
+  </Card>
+</CardGroup>

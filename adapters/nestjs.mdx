@@ -1,0 +1,630 @@
+---
+title: NestJS Adapter
+description: Integrate xmcp into your NestJS application with full dependency injection support
+---
+
+## Overview
+
+The NestJS adapter brings xmcp into your NestJS applications following NestJS patterns and conventions. It provides a module, controller, and service structure with full support for dependency injection, guards, and exception filters.
+
+## Installation
+
+Install xmcp and NestJS dependencies:
+
+```bash
+npm install xmcp @nestjs/common @nestjs/core @nestjs/platform-express
+```
+
+## Quick Start
+
+### 1. Configure xmcp
+
+Create `xmcp.config.ts` in your project root:
+
+```typescript xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+  paths: {
+    prompts: false,
+    resources: false,
+  },
+  experimental: {
+    adapter: "nestjs",
+  },
+};
+
+export default config;
+```
+
+### 2. Create xmcp Module
+
+Create a module that imports the xmcp components:
+
+```typescript src/xmcp/xmcp.module.ts
+import { Module } from "@nestjs/common";
+import { XmcpService } from "@xmcp/adapter";
+import { McpController } from "./xmcp.controller";
+import { McpExceptionFilter } from "./xmcp.filter";
+
+@Module({
+  controllers: [McpController],
+  providers: [XmcpService, McpExceptionFilter],
+  exports: [XmcpService],
+})
+export class XmcpModule {}
+```
+
+### 3. Create Controller
+
+Extend the base xmcp controller:
+
+```typescript src/xmcp/xmcp.controller.ts
+import { Controller, UseFilters } from "@nestjs/common";
+import { XmcpController } from "@xmcp/adapter";
+import { McpExceptionFilter } from "./xmcp.filter";
+
+@Controller("mcp")
+@UseFilters(McpExceptionFilter)
+export class McpController extends XmcpController {}
+```
+
+### 4. Create Exception Filter
+
+Handle xmcp-specific exceptions:
+
+```typescript src/xmcp/xmcp.filter.ts
+import {
+  ExceptionFilter,
+  Catch,
+  ArgumentsHost,
+  HttpException,
+} from "@nestjs/common";
+import { Response } from "express";
+
+@Catch()
+export class McpExceptionFilter implements ExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+
+    const status = exception instanceof HttpException 
+      ? exception.getStatus() 
+      : 500;
+
+    const message = exception instanceof Error 
+      ? exception.message 
+      : "Internal server error";
+
+    response.status(status).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32603,
+        message,
+      },
+      id: null,
+    });
+  }
+}
+```
+
+### 5. Import in App Module
+
+Add XmcpModule to your main application module:
+
+```typescript src/app.module.ts
+import { Module } from "@nestjs/common";
+import { XmcpModule } from "./xmcp/xmcp.module";
+
+@Module({
+  imports: [XmcpModule],
+})
+export class AppModule {}
+```
+
+### 6. Bootstrap Application
+
+```typescript src/main.ts
+import { NestFactory } from "@nestjs/core";
+import { Logger } from "@nestjs/common";
+import { AppModule } from "./app.module";
+
+async function bootstrap() {
+  const logger = new Logger("Bootstrap");
+
+  const app = await NestFactory.create(AppModule, {
+    logger: ["error", "warn", "log", "debug", "verbose"],
+  });
+
+  const port = process.env.PORT || 3000;
+  await app.listen(port);
+
+  logger.log(`Application is running on: http://localhost:${port}`);
+  logger.log(`MCP endpoint: http://localhost:${port}/mcp`);
+}
+
+bootstrap();
+```
+
+### 7. Create Tools
+
+Create tools that can access NestJS services:
+
+```typescript src/tools/list-users.ts
+import { type ToolMetadata } from "xmcp";
+import { getUsersStore } from "../users/users.store";
+
+export const schema = {};
+
+export const metadata: ToolMetadata = {
+  name: "list-users",
+  description: "List all users in the system",
+};
+
+export default async function listUsers() {
+  const usersStore = getUsersStore();
+  const users = usersStore.findAll();
+
+  if (users.length === 0) {
+    return {
+      content: [{ type: "text", text: "No users found in the system." }],
+    };
+  }
+
+  const userList = users
+    .map(
+      (user, index) =>
+        `${index + 1}. ${user.name} (${user.email}) - ID: ${user.id}`
+    )
+    .join("\n");
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Found ${users.length} user(s):\n\n${userList}`,
+      },
+    ],
+  };
+}
+```
+
+## Development
+
+Run both xmcp and NestJS in development:
+
+```bash
+xmcp dev & nest start --watch
+```
+
+Configure your `package.json`:
+
+```json package.json
+{
+  "scripts": {
+    "dev": "xmcp dev & nest start --watch",
+    "build": "xmcp build && nest build",
+    "start": "node dist/main.js",
+    "start:prod": "node dist/main"
+  }
+}
+```
+
+## Authentication with Guards
+
+The NestJS adapter provides a powerful guard system for OAuth authentication.
+
+### Basic Auth Guard
+
+Create an authentication guard:
+
+```typescript src/xmcp/auth.guard.ts
+import { createMcpAuthGuard } from "@xmcp/adapter";
+import { verifyJWT } from "../auth/jwt";
+
+export const McpAuthGuard = createMcpAuthGuard({
+  verifyToken: async (token: string) => {
+    const payload = await verifyJWT(token);
+
+    return {
+      clientId: payload.sub,
+      scopes: payload.scope?.split(" ") || [],
+      expiresAt: payload.exp,
+    };
+  },
+  required: false,
+});
+```
+
+### Apply Guard to Controller
+
+Use the guard on your controller:
+
+```typescript src/xmcp/xmcp.controller.ts
+import { Controller, UseFilters, UseGuards } from "@nestjs/common";
+import { XmcpController } from "@xmcp/adapter";
+import { McpExceptionFilter } from "./xmcp.filter";
+import { McpAuthGuard } from "./auth.guard";
+
+@Controller("mcp")
+@UseFilters(McpExceptionFilter)
+@UseGuards(McpAuthGuard)
+export class McpController extends XmcpController {}
+```
+
+### Required Authentication
+
+Make authentication mandatory:
+
+```typescript
+export const McpAuthGuard = createMcpAuthGuard({
+  verifyToken: async (token: string) => {
+    const payload = await verifyJWT(token);
+    return {
+      clientId: payload.sub,
+      scopes: payload.scope?.split(" ") || [],
+      expiresAt: payload.exp,
+    };
+  },
+  required: true, // Auth required
+  requiredScopes: ["mcp:read", "mcp:write"], // Required scopes
+});
+```
+
+## OAuth Module
+
+Implement OAuth Protected Resource Metadata using the built-in OAuth module.
+
+### Set Up OAuth Module
+
+Import and configure the OAuth module:
+
+```typescript src/app.module.ts
+import { Module } from "@nestjs/common";
+import { OAuthModule } from "@xmcp/adapter";
+import { XmcpModule } from "./xmcp/xmcp.module";
+
+@Module({
+  imports: [
+    XmcpModule,
+    OAuthModule.forRoot({
+      authorizationServers: ["https://auth.example.com"],
+      scopesSupported: ["mcp:read", "mcp:write"],
+      bearerMethodsSupported: ["header"],
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+This automatically creates the `/.well-known/oauth-protected-resource` endpoint.
+
+### OAuth Service API
+
+Inject and use the OAuth service:
+
+```typescript src/some/service.ts
+import { Injectable } from "@nestjs/common";
+import { OAuthService } from "@xmcp/adapter";
+import { Request } from "express";
+
+@Injectable()
+export class SomeService {
+  constructor(private readonly oauthService: OAuthService) {}
+
+  getMetadata(req: Request) {
+    return this.oauthService.getResourceMetadata(req);
+  }
+}
+```
+
+## Service Architecture
+
+The adapter provides a `XmcpService` that handles MCP requests:
+
+```typescript
+import { Injectable, Logger } from "@nestjs/common";
+import { Request, Response } from "express";
+
+@Injectable()
+export class XmcpService {
+  private readonly logger = new Logger(XmcpService.name);
+
+  async handleRequest(req: Request, res: Response): Promise<void> {
+    // Handles MCP request lifecycle
+  }
+}
+```
+
+You can extend or inject this service into your own services:
+
+```typescript src/custom/custom.service.ts
+import { Injectable } from "@nestjs/common";
+import { XmcpService } from "@xmcp/adapter";
+
+@Injectable()
+export class CustomService {
+  constructor(private readonly xmcpService: XmcpService) {}
+
+  async customHandler(req: Request, res: Response) {
+    // Custom pre-processing
+    await this.xmcpService.handleRequest(req, res);
+    // Custom post-processing
+  }
+}
+```
+
+## Controller Reference
+
+The base `XmcpController` provides three methods:
+
+```typescript
+import { Post, Get, Options, Req, Res } from "@nestjs/common";
+
+export class XmcpController {
+  @Post()
+  async handleMcp(@Req() req: Request, @Res() res: Response): Promise<void>
+
+  @Get()
+  handleGet(@Res() res: Response): void
+
+  @Options()
+  handleOptions(@Res() res: Response): void
+}
+```
+
+Extend and customize as needed:
+
+```typescript src/xmcp/xmcp.controller.ts
+import { Controller, Post, Req, Res, UseGuards } from "@nestjs/common";
+import { XmcpController } from "@xmcp/adapter";
+import { CustomAuthGuard } from "./custom-auth.guard";
+
+@Controller("mcp")
+export class McpController extends XmcpController {
+  @Post()
+  @UseGuards(CustomAuthGuard)
+  async handleMcp(@Req() req: Request, @Res() res: Response) {
+    // Custom logic before handling
+    return super.handleMcp(req, res);
+  }
+}
+```
+
+## Integration with Existing Services
+
+Use NestJS services in your tools:
+
+```typescript src/tools/create-user.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { getUsersStore } from "../users/users.store";
+
+export const schema = {
+  name: z.string().describe("User's full name"),
+  email: z.string().email().describe("User's email address"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "create-user",
+  description: "Create a new user in the system",
+};
+
+export default async function createUser({
+  name,
+  email,
+}: InferSchema<typeof schema>) {
+  const usersStore = getUsersStore();
+  
+  const user = usersStore.create({ name, email });
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `User created successfully: ${user.name} (${user.email})`,
+      },
+    ],
+  };
+}
+```
+
+## API Reference
+
+### `XmcpService`
+
+Injectable service for handling MCP requests.
+
+```typescript
+@Injectable()
+export class XmcpService {
+  async handleRequest(req: Request, res: Response): Promise<void>
+}
+```
+
+### `XmcpController`
+
+Base controller with MCP endpoint handlers.
+
+```typescript
+export class XmcpController {
+  @Post() async handleMcp(req: Request, res: Response): Promise<void>
+  @Get() handleGet(res: Response): void
+  @Options() handleOptions(res: Response): void
+}
+```
+
+### `createMcpAuthGuard`
+
+Factory function for creating authentication guards.
+
+```typescript
+export function createMcpAuthGuard(config: McpAuthConfig): Type<CanActivate>
+```
+
+**McpAuthConfig:**
+
+```typescript
+interface McpAuthConfig {
+  verifyToken: (token: string) => Promise<Omit<AuthInfo, "token">>;
+  required?: boolean;
+  requiredScopes?: string[];
+}
+```
+
+**AuthInfo:**
+
+```typescript
+interface AuthInfo {
+  token: string;
+  clientId: string;
+  scopes: string[];
+  expiresAt?: number;
+  extra?: Record<string, unknown>;
+}
+```
+
+### `OAuthModule`
+
+Dynamic module for OAuth Protected Resource Metadata.
+
+```typescript
+export class OAuthModule {
+  static forRoot(config: OAuthConfig): DynamicModule
+}
+```
+
+**OAuthConfig:**
+
+```typescript
+interface OAuthConfig {
+  authorizationServers: string[];
+  scopesSupported?: string[];
+  bearerMethodsSupported?: string[];
+}
+```
+
+### `OAuthService`
+
+Service for OAuth metadata.
+
+```typescript
+@Injectable()
+export class OAuthService {
+  getResourceMetadata(req: Request): OAuthProtectedResourceMetadata
+}
+```
+
+## Example Project Structure
+
+```
+my-nestjs-app/
+├── src/
+│   ├── xmcp/
+│   │   ├── xmcp.module.ts       # xmcp module
+│   │   ├── xmcp.controller.ts   # Controller extending base
+│   │   ├── xmcp.filter.ts       # Exception filter
+│   │   └── auth.guard.ts        # Auth guard
+│   ├── users/
+│   │   ├── users.module.ts
+│   │   ├── users.service.ts
+│   │   ├── users.controller.ts
+│   │   └── users.store.ts
+│   ├── tools/
+│   │   ├── list-users.ts
+│   │   ├── get-user.ts
+│   │   └── create-user.ts
+│   ├── app.module.ts            # Main app module
+│   └── main.ts                  # Bootstrap
+├── xmcp.config.ts               # xmcp configuration
+├── nest-cli.json
+├── package.json
+└── tsconfig.json
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use dependency injection">
+    Leverage NestJS dependency injection in your modules:
+
+    ```typescript
+    @Module({
+      providers: [XmcpService, UsersService],
+      exports: [XmcpService],
+    })
+    ```
+  </Accordion>
+
+  <Accordion title="Apply guards at controller level">
+    Use guards for authentication and authorization:
+
+    ```typescript
+    @UseGuards(McpAuthGuard)
+    export class McpController extends XmcpController {}
+    ```
+  </Accordion>
+
+  <Accordion title="Use exception filters">
+    Handle errors consistently with exception filters:
+
+    ```typescript
+    @UseFilters(McpExceptionFilter)
+    ```
+  </Accordion>
+
+  <Accordion title="Enable logging">
+    Use NestJS logger for debugging:
+
+    ```typescript
+    private readonly logger = new Logger(XmcpService.name);
+    this.logger.log('Request handled');
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Module not found errors">
+    Ensure XmcpModule is imported in your AppModule:
+
+    ```typescript
+    @Module({
+      imports: [XmcpModule],
+    })
+    ```
+  </Accordion>
+
+  <Accordion title="Guards not executing">
+    Check guard order and ensure they're applied to the controller:
+
+    ```typescript
+    @UseGuards(McpAuthGuard)
+    ```
+  </Accordion>
+
+  <Accordion title="Exception filter not catching errors">
+    Apply exception filters at the controller level:
+
+    ```typescript
+    @UseFilters(McpExceptionFilter)
+    ```
+  </Accordion>
+
+  <Accordion title="Tools not loading">
+    Run `xmcp build` and verify paths in `xmcp.config.ts`.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building Tools" icon="wrench" href="/building/tools">
+    Learn how to create powerful tools
+  </Card>
+  <Card title="Next.js Adapter" icon="react" href="/adapters/nextjs">
+    Check out the Next.js adapter
+  </Card>
+</CardGroup>

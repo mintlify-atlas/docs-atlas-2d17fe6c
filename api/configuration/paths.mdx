@@ -1,0 +1,120 @@
+---
+title: Paths Configuration
+description: Custom paths for tools, prompts, and resources
+---
+
+## PathsConfig
+
+Configure custom paths for tools, prompts, and resources in your xmcp project.
+
+<ParamField path="tools" type="boolean | string" default="true">
+  Path to the tools directory or boolean to enable/disable.
+  - `true` - Use default path `"src/tools"`
+  - `false` - Disable tools
+  - `string` - Custom path to tools directory
+</ParamField>
+
+<ParamField path="prompts" type="boolean | string" default="true">
+  Path to the prompts directory or boolean to enable/disable.
+  - `true` - Use default path `"src/prompts"`
+  - `false` - Disable prompts
+  - `string` - Custom path to prompts directory
+</ParamField>
+
+<ParamField path="resources" type="boolean | string" default="true">
+  Path to the resources directory or boolean to enable/disable.
+  - `true` - Use default path `"src/resources"`
+  - `false` - Disable resources
+  - `string` - Custom path to resources directory
+</ParamField>
+
+## Default Paths
+
+When set to `true`, the following default paths are used:
+
+- **tools**: `src/tools`
+- **prompts**: `src/prompts`
+- **resources**: `src/resources`
+
+## Examples
+
+### Use All Defaults
+
+```typescript
+export default {
+  paths: {
+    tools: true,
+    prompts: true,
+    resources: true,
+  },
+};
+```
+
+### Custom Paths
+
+```typescript
+export default {
+  paths: {
+    tools: "lib/tools",
+    prompts: "lib/prompts",
+    resources: "lib/resources",
+  },
+};
+```
+
+### Disable Specific Features
+
+```typescript
+export default {
+  paths: {
+    tools: "src/tools",
+    prompts: false, // Disable prompts
+    resources: "src/resources",
+  },
+};
+```
+
+### Monorepo Structure
+
+```typescript
+export default {
+  paths: {
+    tools: "packages/mcp-server/src/tools",
+    prompts: "packages/mcp-server/src/prompts",
+    resources: "packages/mcp-server/src/resources",
+  },
+};
+```
+
+### Alternative Directory Structure
+
+```typescript
+export default {
+  paths: {
+    tools: "mcp/tools",
+    prompts: "mcp/prompts",
+    resources: "mcp/resources",
+  },
+};
+```
+
+## Directory Structure
+
+Each path should point to a directory containing your MCP components:
+
+```
+project/
+├── src/
+│   ├── tools/           # Tool implementations
+│   │   ├── calculator.ts
+│   │   └── search.ts
+│   ├── prompts/         # Prompt templates
+│   │   ├── summarize.ts
+│   │   └── translate.ts
+│   └── resources/       # Resource handlers
+│       ├── files.ts
+│       └── database.ts
+└── xmcp.config.ts
+```
+
+xmcp will automatically discover and register all tools, prompts, and resources from these directories.

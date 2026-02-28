@@ -1,0 +1,142 @@
+---
+title: HTTP Transport
+description: HTTP transport configuration for xmcp
+---
+
+## HttpTransportConfig
+
+Configuration for the HTTP transport. Accepts either a boolean or an object.
+
+### Boolean Mode
+
+<ParamField path="http" type="boolean" default="undefined">
+  - `true` - Enable HTTP transport with all defaults
+  - `false` - Disable HTTP transport
+</ParamField>
+
+### Object Mode
+
+<ParamField path="port" type="number" default="3001">
+  Port number for the HTTP server.
+</ParamField>
+
+<ParamField path="host" type="string" default="127.0.0.1">
+  Host address to bind the server to.
+</ParamField>
+
+<ParamField path="bodySizeLimit" type="number" default="10485760">
+  Maximum request body size in bytes. Default is 10MB (1024 * 1024 * 10).
+</ParamField>
+
+<ParamField path="debug" type="boolean" default="false">
+  Enable debug logging for the HTTP transport.
+</ParamField>
+
+<ParamField path="endpoint" type="string" default="/mcp">
+  Endpoint path for MCP requests.
+</ParamField>
+
+<ParamField path="cors" type="CorsConfig">
+  CORS configuration. See [CORS Configuration](#cors-configuration) below.
+</ParamField>
+
+## CORS Configuration
+
+Configure Cross-Origin Resource Sharing (CORS) for the HTTP transport.
+
+<ParamField path="origin" type="string | string[] | boolean" default="*">
+  Allowed origins. Can be:
+  - A string (e.g., `"https://example.com"`)
+  - An array of strings (e.g., `["https://app.com", "https://admin.com"]`)
+  - A boolean (`true` allows all origins, `false` disallows all)
+  - Default `"*"` allows all origins
+</ParamField>
+
+<ParamField path="methods" type="string | string[]" default="['GET', 'POST']">
+  Allowed HTTP methods. Can be a string or array of strings.
+</ParamField>
+
+<ParamField path="allowedHeaders" type="string | string[]" default="['Content-Type', 'Authorization', 'mcp-session-id', 'mcp-protocol-version']">
+  Allowed request headers. The headers `mcp-session-id` and `mcp-protocol-version` are automatically added if not present.
+</ParamField>
+
+<ParamField path="exposedHeaders" type="string | string[]" default="['Content-Type', 'Authorization', 'mcp-session-id']">
+  Headers that browsers are allowed to access. The header `mcp-session-id` is automatically added if not present.
+</ParamField>
+
+<ParamField path="credentials" type="boolean" default="false">
+  Allow credentials (cookies, authorization headers) in cross-origin requests.
+</ParamField>
+
+<ParamField path="maxAge" type="number" default="86400">
+  How long (in seconds) preflight request results can be cached. Default is 24 hours.
+</ParamField>
+
+## Examples
+
+### Minimal Configuration
+
+```typescript
+export default {
+  http: true, // Use all defaults
+};
+```
+
+### Custom Port and Host
+
+```typescript
+export default {
+  http: {
+    port: 8080,
+    host: "0.0.0.0",
+  },
+};
+```
+
+### Custom CORS
+
+```typescript
+export default {
+  http: {
+    port: 3001,
+    cors: {
+      origin: ["https://app.example.com", "https://admin.example.com"],
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "DELETE"],
+    },
+  },
+};
+```
+
+### Development Configuration
+
+```typescript
+export default {
+  http: {
+    port: 3001,
+    debug: true,
+    cors: {
+      origin: "*",
+      credentials: false,
+    },
+  },
+};
+```
+
+### Production Configuration
+
+```typescript
+export default {
+  http: {
+    port: 3001,
+    host: "127.0.0.1",
+    bodySizeLimit: 1024 * 1024 * 5, // 5MB
+    debug: false,
+    cors: {
+      origin: ["https://yourdomain.com"],
+      credentials: true,
+      maxAge: 7200,
+    },
+  },
+};
+```

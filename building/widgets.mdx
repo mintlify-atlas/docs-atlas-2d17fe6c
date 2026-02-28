@@ -1,0 +1,476 @@
+---
+title: Building Widgets
+description: Learn how to build React widgets for OpenAI-compatible UIs in xmcp
+---
+
+## What are Widgets?
+
+Widgets are React components that render interactive UIs in OpenAI-compatible clients like ChatGPT. They allow you to create rich, interactive experiences beyond plain text responses.
+
+In xmcp, widgets are created as **tools that return React components** with special metadata flags that indicate they can render UI.
+
+<Info>
+Widgets are essentially tools with a React component as the handler and specific `_meta` configuration.
+</Info>
+
+## Widget Structure
+
+Widgets combine tool structure with React components:
+
+### 1. Metadata Export
+
+The `metadata` export includes special OpenAI metadata:
+
+```typescript
+import { type ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "weather",
+  description: "Weather App",
+  _meta: {
+    openai: {
+      toolInvocation: {
+        invoking: "Loading weather",
+        invoked: "Weather loaded",
+      },
+      widgetAccessible: true,
+      resultCanProduceWidget: true,
+    },
+  },
+};
+```
+
+<ParamField path="_meta.openai.toolInvocation" type="object">
+  Messages shown during tool invocation:
+  - `invoking` - Message shown while the widget is loading
+  - `invoked` - Message shown when the widget is ready
+</ParamField>
+
+<ParamField path="_meta.openai.widgetAccessible" type="boolean">
+  Set to `true` to indicate this tool can render a widget
+</ParamField>
+
+<ParamField path="_meta.openai.resultCanProduceWidget" type="boolean">
+  Set to `true` to indicate the result will include a widget
+</ParamField>
+
+<ParamField path="_meta.ui.csp.connectDomains" type="string[]">
+  List of domains the widget can connect to (for CSP configuration):
+  ```typescript
+  _meta: {
+    ui: {
+      csp: {
+        connectDomains: ["api.example.com", "cdn.example.com"],
+      },
+    },
+  }
+  ```
+</ParamField>
+
+### 2. Optional Schema Export
+
+If your widget accepts parameters, define a schema:
+
+```typescript
+import { z } from "zod";
+
+export const schema = {
+  initialCount: z.number().describe("Initial count value"),
+};
+```
+
+### 3. Default Export (React Component)
+
+The default export is a React component:
+
+```typescript
+import { useState } from "react";
+import { type InferSchema } from "xmcp";
+
+export default function handler({ initialCount }: InferSchema<typeof schema>) {
+  const [count, setCount] = useState(initialCount);
+
+  return (
+    <div>
+      <h1>Counter: {count}</h1>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+    </div>
+  );
+}
+```
+
+<Warning>
+Widget files must use the `.tsx` extension, not `.ts`.
+</Warning>
+
+## Real Examples
+
+### Weather Widget
+
+From `~/workspace/source/examples/open-ai-react/src/tools/weather.tsx:1-89`:
+
+```tsx
+import { type ToolMetadata } from "xmcp";
+import { useState, useEffect } from "react";
+
+export const metadata: ToolMetadata = {
+  name: "weather",
+  description: "Weather App",
+  _meta: {
+    openai: {
+      toolInvocation: {
+        invoking: "Loading weather",
+        invoked: "Weather loaded",
+      },
+      widgetAccessible: true,
+      resultCanProduceWidget: true,
+    },
+  },
+};
+
+const cities = {
+  "Buenos Aires": { lat: -34.6037, lon: -58.3816 },
+  "San Francisco": { lat: 37.7749, lon: -122.4194 },
+  Berlin: { lat: 52.52, lon: 13.405 },
+  Tokyo: { lat: 35.6762, lon: 139.6503 },
+  "New York": { lat: 40.7128, lon: -74.006 },
+};
+
+export default function handler() {
+  const [selectedCity, setSelectedCity] = useState("Buenos Aires");
+  const [weatherData, setWeatherData] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchWeather = async () => {
+      setLoading(true);
+      setError(null);
+
+      const city = cities[selectedCity as keyof typeof cities];
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m`;
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error("Failed to fetch weather data");
+        }
+        const data = await response.json();
+        setWeatherData(data);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Unknown error");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchWeather();
+  }, [selectedCity]);
+
+  return (
+    <div>
+      <h1>Weather App</h1>
+
+      <div>
+        <h2>Select a city:</h2>
+        {Object.keys(cities).map((city) => (
+          <button key={city} onClick={() => setSelectedCity(city)}>
+            {city}
+          </button>
+        ))}
+      </div>
+
+      <div>
+        <h2>{selectedCity}</h2>
+
+        {loading && <p>Loading...</p>}
+
+        {error && <p>Error: {error}</p>}
+
+        {weatherData && !loading && (
+          <div>
+            <p>Temperature: {weatherData.current.temperature_2m}°C</p>
+            <p>Humidity: {weatherData.current.relative_humidity_2m}%</p>
+            <p>Wind Speed: {weatherData.current.wind_speed_10m} km/h</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+### Counter Widget with Parameters
+
+From `~/workspace/source/examples/open-ai-react/src/tools/counter.tsx:1-36`:
+
+```tsx
+import { InferSchema, type ToolMetadata } from "xmcp";
+import { useState } from "react";
+import { z } from "zod";
+
+export const metadata: ToolMetadata = {
+  name: "counter",
+  description: "Counter React",
+  _meta: {
+    openai: {
+      toolInvocation: {
+        invoking: "Loading counter",
+        invoked: "Counter loaded",
+      },
+      widgetAccessible: true,
+      resultCanProduceWidget: true,
+    },
+  },
+};
+
+export const schema = {
+  initialCount: z.number().describe("The initial count value"),
+};
+
+export default function handler({ initialCount }: InferSchema<typeof schema>) {
+  const [count, setCount] = useState(initialCount);
+
+  return (
+    <div>
+      <h1>Counter: {count}</h1>
+      <button onClick={() => setCount(count + 1)}>Increment</button>
+      <button onClick={() => setCount(count - 1)}>Decrement</button>
+      <button onClick={() => setCount(0)}>Reset</button>
+    </div>
+  );
+}
+```
+
+## Creating Widgets with CLI
+
+Use the xmcp CLI to quickly scaffold a new widget:
+
+```bash
+xmcp create widget my-widget
+```
+
+This creates a new widget file at `src/tools/my-widget.tsx` with the basic structure:
+
+```tsx
+import { type ToolMetadata } from "xmcp";
+import { useState } from "react";
+
+export const metadata: ToolMetadata = {
+  name: "my-widget",
+  description: "My Widget",
+  _meta: {
+    ui: {
+      csp: {
+        connectDomains: [],
+      },
+    },
+  },
+};
+
+export default function myWidget() {
+  const [state, setState] = useState<string | null>(null);
+
+  return (
+    <div>
+      <h1>My Widget</h1>
+      <p>TODO: Implement your widget UI here</p>
+    </div>
+  );
+}
+```
+
+<Info>
+Widgets are created in `src/tools/` (not a separate directory) because they are tools that happen to render React components.
+</Info>
+
+## Widget Examples
+
+xmcp includes several widget examples to learn from:
+
+<CardGroup cols={3}>
+  <Card title="open-ai-react" icon="react">
+    Basic React widgets with no styling
+  </Card>
+  <Card title="open-ai-react-css-modules" icon="css3">
+    Widgets with CSS Modules styling
+  </Card>
+  <Card title="open-ai-react-tailwind" icon="wind">
+    Widgets with Tailwind CSS styling
+  </Card>
+</CardGroup>
+
+## Styling Widgets
+
+### Plain CSS
+
+```tsx
+export default function handler() {
+  return (
+    <div style={{ padding: "20px", backgroundColor: "#f0f0f0" }}>
+      <h1 style={{ color: "#333" }}>My Widget</h1>
+    </div>
+  );
+}
+```
+
+### CSS Modules
+
+```tsx
+import styles from "./weather.module.css";
+
+export default function handler() {
+  return (
+    <div className={styles.container}>
+      <h1 className={styles.title}>Weather App</h1>
+    </div>
+  );
+}
+```
+
+### Tailwind CSS
+
+```tsx
+export default function handler() {
+  return (
+    <div className="p-4 bg-gray-100 rounded-lg">
+      <h1 className="text-2xl font-bold text-gray-800">Weather App</h1>
+    </div>
+  );
+}
+```
+
+## Widget Features
+
+### State Management
+
+Use React hooks for state:
+
+```tsx
+import { useState, useEffect } from "react";
+
+export default function handler() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchData().then(setData).finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p>Loading...</p>;
+  return <div>{data}</div>;
+}
+```
+
+### API Calls
+
+Widgets can fetch data from external APIs:
+
+```tsx
+export default function handler() {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    fetch("https://api.example.com/data")
+      .then((res) => res.json())
+      .then(setData);
+  }, []);
+
+  return <div>{JSON.stringify(data)}</div>;
+}
+```
+
+<Warning>
+Remember to add API domains to `_meta.ui.csp.connectDomains` for CSP compliance.
+</Warning>
+
+### User Interactions
+
+Handle user events:
+
+```tsx
+export default function handler() {
+  const [selected, setSelected] = useState("option1");
+
+  return (
+    <div>
+      <button onClick={() => setSelected("option1")}>Option 1</button>
+      <button onClick={() => setSelected("option2")}>Option 2</button>
+      <p>Selected: {selected}</p>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+<Card title="Keep It Simple" icon="minimize">
+  Widgets should be focused and simple. Complex UIs may not render well in all clients.
+</Card>
+
+<Card title="Handle Loading States" icon="spinner">
+  Always show loading indicators when fetching data:
+  ```tsx
+  {loading && <p>Loading...</p>}
+  {error && <p>Error: {error}</p>}
+  {data && <div>{data}</div>}
+  ```
+</Card>
+
+<Card title="Configure CSP Domains" icon="shield">
+  Add all external domains to `connectDomains`:
+  ```typescript
+  _meta: {
+    ui: {
+      csp: {
+        connectDomains: ["api.weather.com"],
+      },
+    },
+  }
+  ```
+</Card>
+
+<Card title="Use Descriptive Invocation Messages" icon="message">
+  Set clear `invoking` and `invoked` messages:
+  ```typescript
+  toolInvocation: {
+    invoking: "Loading weather data",
+    invoked: "Weather data loaded",
+  }
+  ```
+</Card>
+
+<Card title="Test in Target Environment" icon="flask">
+  Test your widgets in the actual OpenAI client to ensure they render correctly.
+</Card>
+
+## Limitations
+
+<Warning>
+**Widget Compatibility**
+
+Widgets are designed for OpenAI-compatible clients. They may not work in all MCP clients.
+</Warning>
+
+<Warning>
+**No Server-Side Rendering**
+
+Widgets render client-side only. Avoid dependencies on Node.js APIs.
+</Warning>
+
+<Warning>
+**CSP Restrictions**
+
+Widgets run in a restricted environment. You must declare all external domains in `connectDomains`.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building Tools" icon="wrench" href="/building/tools">
+    Learn about regular tools (non-widget)
+  </Card>
+  <Card title="Building Resources" icon="folder" href="/building/resources">
+    Create static or dynamic resources for context
+  </Card>
+</CardGroup>

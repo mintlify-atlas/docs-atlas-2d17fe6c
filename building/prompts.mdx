@@ -1,0 +1,342 @@
+---
+title: Building Prompts
+description: Learn how to build MCP prompts in xmcp
+---
+
+## What are Prompts?
+
+Prompts are reusable templates in MCP that help AI models generate consistent, well-structured responses. They provide a way to standardize common tasks like code reviews, documentation generation, or data analysis.
+
+In xmcp, prompts are automatically registered from the `src/prompts/` directory using file-system routing.
+
+## Prompt Structure
+
+Every prompt consists of three main exports:
+
+### 1. Metadata Export
+
+The `metadata` export defines the prompt's identity:
+
+```typescript
+import { type PromptMetadata } from "xmcp";
+
+export const metadata: PromptMetadata = {
+  name: "review-code",
+  title: "Review Code",
+  description: "Review code for best practices and potential issues",
+  role: "user",
+};
+```
+
+#### PromptMetadata Type
+
+The `PromptMetadata` interface from `~/workspace/source/packages/xmcp/src/types/prompt.ts:1-7` includes:
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the prompt
+</ParamField>
+
+<ParamField path="title" type="string" required>
+  Human-readable title for the prompt
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Description of what the prompt does
+</ParamField>
+
+<ParamField path="role" type="string">
+  The role for the prompt message. Common values:
+  - `"user"` - Prompt will be sent as a user message (default)
+  - `"assistant"` - Prompt will be sent as an assistant message
+  - `"system"` - Prompt will be sent as a system message
+</ParamField>
+
+### 2. Schema Export
+
+The `schema` export defines the prompt's parameters using Zod:
+
+```typescript
+import { z } from "zod";
+
+export const schema = {
+  code: z.string().describe("The code to review"),
+};
+```
+
+### 3. Default Export (Handler)
+
+The default export is the function that generates the prompt text:
+
+```typescript
+import { type InferSchema } from "xmcp";
+
+export default function reviewCode({ code }: InferSchema<typeof schema>) {
+  return {
+    type: "text",
+    text: `Please review this code for best practices...`,
+  };
+}
+```
+
+## Real Examples
+
+### Basic Prompt: Code Review
+
+From `~/workspace/source/examples/stdio-transport/src/prompts/review-code.ts:1-33`:
+
+```typescript
+import { z } from "zod";
+import { type InferSchema, type PromptMetadata } from "xmcp";
+
+// Define the schema for prompt parameters
+export const schema = {
+  code: z.string().describe("The code to review"),
+};
+
+// Define prompt metadata
+export const metadata: PromptMetadata = {
+  name: "review-code",
+  title: "Review Code",
+  description: "Review code for best practices and potential issues",
+  role: "user",
+};
+
+// Prompt implementation
+export default function reviewCode({ code }: InferSchema<typeof schema>) {
+  return {
+    type: "text",
+    text: `Please review this code for:
+      - Code quality and best practices
+      - Potential bugs or security issues
+      - Performance optimizations
+      - Readability and maintainability
+
+      Code to review:
+      \`\`\`
+      ${code}
+      \`\`\``,
+  };
+}
+```
+
+### Advanced Prompt: Team Greeting with Completions
+
+From `~/workspace/source/examples/http-transport/src/prompts/team-greeting.ts:1-39`:
+
+```typescript
+import { z } from "zod";
+import { type InferSchema, type PromptMetadata, completable } from "xmcp";
+
+// Define the schema for prompt parameters
+export const schema = {
+  department: completable(z.string(), (value) => {
+    return ["engineering", "sales", "marketing", "support"].filter((d) =>
+      d.startsWith(value)
+    );
+  }),
+  name: completable(z.string(), (value, context) => {
+    const department = context?.arguments?.["department"];
+    if (department === "engineering") {
+      return ["Alice", "Bob", "Charlie"].filter((n) => n.startsWith(value));
+    } else if (department === "sales") {
+      return ["David", "Eve", "Frank"].filter((n) => n.startsWith(value));
+    } else if (department === "marketing") {
+      return ["Grace", "Henry", "Iris"].filter((n) => n.startsWith(value));
+    }
+    return ["Guest"].filter((n) => n.startsWith(value));
+  }),
+};
+
+// Define prompt metadata
+export const metadata: PromptMetadata = {
+  name: "team-greeting",
+  title: "Team Greeting",
+  description: "Generate a greeting for team members",
+  role: "assistant",
+};
+
+// Prompt implementation
+export default function teamGreeting({
+  department,
+  name,
+}: InferSchema<typeof schema>) {
+  return `Hello ${name}, welcome to the ${department} team!`;
+}
+```
+
+<Info>
+The `completable()` helper enables autocomplete functionality for prompt parameters. The completion function receives:
+- `value` - The current input value
+- `context` - Optional context including other arguments
+</Info>
+
+## Creating Prompts with CLI
+
+Use the xmcp CLI to quickly scaffold a new prompt:
+
+```bash
+xmcp create prompt my-prompt
+```
+
+This creates a new prompt file at `src/prompts/my-prompt.ts` with the basic structure:
+
+```typescript
+import { z } from "zod";
+import { type InferSchema, type PromptMetadata } from "xmcp";
+
+export const schema = {
+  // Add your parameters here
+};
+
+export const metadata: PromptMetadata = {
+  name: "my-prompt",
+  title: "My Prompt",
+  description: "TODO: Add description",
+  role: "user",
+};
+
+export default function myPrompt(params: InferSchema<typeof schema>) {
+  // TODO: Implement your prompt logic here
+  return `Your prompt content here`;
+}
+```
+
+## Return Values
+
+Prompts can return:
+
+1. **Simple strings** - Direct text content:
+   ```typescript
+   return "Your prompt text here";
+   ```
+
+2. **Text content objects** - Structured format:
+   ```typescript
+   return {
+     type: "text",
+     text: "Your prompt text here",
+   };
+   ```
+
+3. **Multiple content blocks** - For complex prompts:
+   ```typescript
+   return [
+     { type: "text", text: "First part" },
+     { type: "text", text: "Second part" },
+   ];
+   ```
+
+## Prompt Roles
+
+The `role` field determines how the prompt is presented to the AI model:
+
+<CardGroup cols={3}>
+  <Card title="user" icon="user">
+    Most common role. Used for instructions and requests from the user.
+  </Card>
+  <Card title="assistant" icon="robot">
+    Used for prompts that should appear as assistant responses.
+  </Card>
+  <Card title="system" icon="gear">
+    Used for system-level instructions and context.
+  </Card>
+</CardGroup>
+
+## Dynamic Prompts
+
+Prompts can include dynamic content based on parameters:
+
+```typescript
+export const schema = {
+  language: z.enum(["typescript", "python", "go"]),
+  code: z.string(),
+};
+
+export default function reviewCode({ language, code }: InferSchema<typeof schema>) {
+  const languageSpecific = {
+    typescript: "Check for proper TypeScript types and interfaces",
+    python: "Ensure PEP 8 compliance and proper type hints",
+    go: "Verify Go idioms and error handling patterns",
+  };
+
+  return `Review this ${language} code:
+
+Specific checks:
+- ${languageSpecific[language]}
+- General best practices
+- Security considerations
+
+Code:
+\`\`\`${language}
+${code}
+\`\`\``;
+}
+```
+
+## Best Practices
+
+<Card title="Be Specific and Clear" icon="bullseye">
+  Write prompts that clearly communicate the expected output. Include examples when helpful.
+</Card>
+
+<Card title="Use Structured Formatting" icon="list">
+  Use markdown, bullet points, and code blocks to make prompts easy to parse.
+</Card>
+
+<Card title="Parameterize Common Variations" icon="sliders">
+  Instead of creating multiple similar prompts, use parameters to handle variations.
+</Card>
+
+<Card title="Set Appropriate Roles" icon="user-tag">
+  Choose the right role for your prompt's purpose:
+  - Use `"user"` for most prompts
+  - Use `"assistant"` for few-shot examples
+  - Use `"system"` for behavior instructions
+</Card>
+
+<Card title="Test with Different Inputs" icon="vial">
+  Ensure your prompts work correctly with various parameter values.
+</Card>
+
+## Common Use Cases
+
+### Code Analysis
+```typescript
+export const metadata: PromptMetadata = {
+  name: "analyze-code",
+  title: "Code Analysis",
+  description: "Analyze code for complexity and maintainability",
+  role: "user",
+};
+```
+
+### Documentation Generation
+```typescript
+export const metadata: PromptMetadata = {
+  name: "generate-docs",
+  title: "Generate Documentation",
+  description: "Generate documentation from code",
+  role: "user",
+};
+```
+
+### Test Creation
+```typescript
+export const metadata: PromptMetadata = {
+  name: "create-tests",
+  title: "Create Tests",
+  description: "Generate unit tests for code",
+  role: "user",
+};
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building Tools" icon="wrench" href="/building/tools">
+    Learn how to create executable tools
+  </Card>
+  <Card title="Building Resources" icon="folder" href="/building/resources">
+    Create static or dynamic resources for context
+  </Card>
+</CardGroup>

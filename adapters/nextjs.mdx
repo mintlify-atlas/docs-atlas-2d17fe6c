@@ -1,0 +1,428 @@
+---
+title: Next.js Adapter
+description: Integrate xmcp into your Next.js application
+---
+
+## Overview
+
+The Next.js adapter allows you to add MCP capabilities to your Next.js applications using App Router API routes. It provides first-class support for OAuth 2.0 Bearer token authentication and follows Next.js conventions.
+
+## Installation
+
+Install xmcp in your Next.js project:
+
+```bash
+npm install xmcp
+```
+
+## Configuration
+
+### 1. Configure xmcp
+
+Create `xmcp.config.ts` in your project root:
+
+```typescript xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+  experimental: {
+    adapter: "nextjs",
+  },
+  paths: {
+    tools: "src/tools",
+    prompts: false,
+    resources: false,
+  },
+};
+
+export default config;
+```
+
+### 2. Create API Route
+
+Create `src/app/mcp/route.ts` (or your preferred endpoint):
+
+```typescript src/app/mcp/route.ts
+import { xmcpHandler } from "@xmcp/adapter";
+
+export { xmcpHandler as GET, xmcpHandler as POST };
+```
+
+That's it! The handler automatically:
+- Accepts POST requests (required for MCP)
+- Parses JSON-RPC messages
+- Routes to your tools, prompts, and resources
+- Returns proper error responses
+
+### 3. Create Tools
+
+Create tools in your configured directory:
+
+```typescript src/tools/get-weather.ts
+import { type ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "get-weather",
+  description: "Get the weather for a state",
+  annotations: {
+    title: "Get the weather for a state",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default async function getWeather() {
+  // Your implementation
+  const weatherData = await fetch("https://api.weather.gov/alerts?area=CA");
+  const data = await weatherData.json();
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `Weather: ${JSON.stringify(data, null, 2)}`,
+      },
+    ],
+  };
+}
+```
+
+## Development
+
+Run both xmcp and Next.js in development:
+
+```bash
+xmcp dev & next dev
+```
+
+Or configure your `package.json`:
+
+```json package.json
+{
+  "scripts": {
+    "dev": "xmcp dev & next dev --turbopack",
+    "build": "xmcp build && next build",
+    "start": "next start"
+  }
+}
+```
+
+## Authentication
+
+The Next.js adapter includes built-in OAuth 2.0 Bearer token authentication following [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728.html).
+
+### Basic Authentication
+
+Wrap your handler with `withAuth`:
+
+```typescript src/app/mcp/route.ts
+import { xmcpHandler, withAuth } from "@xmcp/adapter";
+
+const authenticatedHandler = withAuth(xmcpHandler, {
+  verifyToken: async (req, bearerToken) => {
+    if (!bearerToken) return undefined;
+
+    // Verify the token (e.g., JWT verification)
+    const payload = await verifyJWT(bearerToken);
+
+    return {
+      token: bearerToken,
+      clientId: payload.sub,
+      scopes: payload.scope?.split(" ") || [],
+      expiresAt: payload.exp,
+    };
+  },
+  required: false, // Make auth optional
+});
+
+export { authenticatedHandler as GET, authenticatedHandler as POST };
+```
+
+### Required Authentication
+
+Make authentication mandatory:
+
+```typescript
+const authenticatedHandler = withAuth(xmcpHandler, {
+  verifyToken: async (req, bearerToken) => {
+    if (!bearerToken) return undefined;
+
+    const payload = await verifyJWT(bearerToken);
+    return {
+      token: bearerToken,
+      clientId: payload.sub,
+      scopes: payload.scope?.split(" ") || [],
+      expiresAt: payload.exp,
+    };
+  },
+  required: true, // Auth is required
+  requiredScopes: ["mcp:read", "mcp:write"], // Require specific scopes
+});
+```
+
+### Protected Resource Metadata
+
+Implement the OAuth Protected Resource Metadata endpoint at `/.well-known/oauth-protected-resource`:
+
+```typescript src/app/.well-known/oauth-protected-resource/route.ts
+import {
+  resourceMetadataHandler,
+  resourceMetadataOptions,
+} from "@xmcp/adapter";
+
+export const GET = resourceMetadataHandler({
+  authorizationServers: ["https://auth.example.com"],
+});
+
+export const OPTIONS = resourceMetadataOptions;
+```
+
+This endpoint returns metadata about your protected resource:
+
+```json
+{
+  "resource": "https://your-app.com",
+  "authorization_servers": ["https://auth.example.com"]
+}
+```
+
+### Access Auth Info in Tools
+
+Authentication information is available in your tools via request context:
+
+```typescript src/tools/get-user-data.ts
+import { type ToolMetadata } from "xmcp";
+import { getRequestContext } from "xmcp/context";
+
+export const metadata: ToolMetadata = {
+  name: "get-user-data",
+  description: "Get authenticated user data",
+};
+
+export default async function getUserData() {
+  const context = getRequestContext();
+  const auth = context?.auth;
+
+  if (!auth) {
+    return {
+      content: [{ type: "text", text: "Not authenticated" }],
+    };
+  }
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `User: ${auth.clientId}, Scopes: ${auth.scopes.join(", ")}`,
+      },
+    ],
+  };
+}
+```
+
+## API Reference
+
+### `xmcpHandler`
+
+Main handler for MCP requests.
+
+```typescript
+export async function xmcpHandler(request: Request): Promise<Response>
+```
+
+- **Parameters:**
+  - `request`: Web API Request object
+- **Returns:** Web API Response object
+- **Handles:** POST requests only, returns 405 for other methods
+
+### `withAuth`
+
+Wraps a handler with OAuth 2.0 Bearer token authentication.
+
+```typescript
+export function withAuth(
+  handler: (request: Request) => Promise<Response>,
+  config: AuthConfig
+): (request: Request) => Promise<Response>
+```
+
+- **Parameters:**
+  - `handler`: The base MCP handler
+  - `config`: Authentication configuration
+    - `verifyToken`: Function to verify bearer tokens
+    - `required`: Whether auth is required (default: false)
+    - `requiredScopes`: Array of required OAuth scopes
+- **Returns:** Authenticated handler function
+
+### `resourceMetadataHandler`
+
+Creates a handler for the OAuth Protected Resource Metadata endpoint.
+
+```typescript
+export function resourceMetadataHandler(options: {
+  authorizationServers: string[];
+}): (req: Request) => Response
+```
+
+- **Parameters:**
+  - `authorizationServers`: Array of authorization server URLs
+- **Returns:** Handler function for GET requests
+
+### `resourceMetadataOptions`
+
+CORS OPTIONS handler for the metadata endpoint.
+
+```typescript
+export function resourceMetadataOptions(req: Request): Response
+```
+
+## Types
+
+### `AuthConfig`
+
+```typescript
+type VerifyToken = (
+  req: Request,
+  bearerToken?: string
+) => Promise<
+  | {
+      token: string;
+      clientId: string;
+      scopes: string[];
+      expiresAt?: number;
+      resource?: URL;
+      extra?: Record<string, unknown>;
+    }
+  | undefined
+>;
+
+type AuthConfig = {
+  verifyToken: VerifyToken;
+  required?: boolean;
+  requiredScopes?: string[];
+};
+```
+
+### `OAuthProtectedResourceMetadata`
+
+```typescript
+interface OAuthProtectedResourceMetadata {
+  resource: string;
+  authorization_servers: string[];
+  bearer_methods_supported?: string[];
+  resource_documentation?: string;
+  introspection_endpoint?: string;
+  revocation_endpoint?: string;
+  [key: string]: unknown;
+}
+```
+
+## Error Handling
+
+The adapter automatically handles errors:
+
+- **405 Method Not Allowed**: Non-POST requests
+- **401 Unauthorized**: Invalid or missing token (when required)
+- **403 Forbidden**: Insufficient scopes
+- **500 Internal Server Error**: Server errors
+
+All errors follow JSON-RPC 2.0 format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32001,
+    "message": "Invalid token"
+  },
+  "id": null
+}
+```
+
+## Example Project Structure
+
+```
+my-nextjs-app/
+├── src/
+│   ├── app/
+│   │   ├── mcp/
+│   │   │   └── route.ts          # MCP endpoint
+│   │   ├── .well-known/
+│   │   │   └── oauth-protected-resource/
+│   │   │       └── route.ts      # OAuth metadata
+│   │   ├── page.tsx
+│   │   └── layout.tsx
+│   └── tools/
+│       ├── get-weather.ts
+│       └── greet-user.ts
+├── xmcp.config.ts               # xmcp configuration
+├── next.config.ts
+├── package.json
+└── tsconfig.json
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use environment variables for secrets">
+    Never hardcode API keys or secrets. Use Next.js environment variables:
+
+    ```typescript
+    const apiKey = process.env.API_KEY;
+    ```
+  </Accordion>
+
+  <Accordion title="Implement proper token verification">
+    Use established libraries for JWT verification:
+
+    ```typescript
+    import { jwtVerify } from 'jose';
+
+    const { payload } = await jwtVerify(token, secret);
+    ```
+  </Accordion>
+
+  <Accordion title="Set appropriate CORS headers">
+    The adapter handles CORS automatically, but customize if needed in your route configuration.
+  </Accordion>
+
+  <Accordion title="Use TypeScript for type safety">
+    xmcp provides full TypeScript support. Always use types for better developer experience.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="405 Method Not Allowed">
+    MCP requires POST requests. Ensure you're exporting the handler for both GET and POST:
+
+    ```typescript
+    export { xmcpHandler as GET, xmcpHandler as POST };
+    ```
+  </Accordion>
+
+  <Accordion title="Tools not found">
+    Verify your `xmcp.config.ts` paths match your directory structure and run `xmcp build`.
+  </Accordion>
+
+  <Accordion title="Authentication not working">
+    Check that:
+    - Bearer token is in the Authorization header
+    - Token verification logic is correct
+    - Required scopes match what's in the token
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building Tools" icon="wrench" href="/building/tools">
+    Learn how to create powerful tools
+  </Card>
+  <Card title="Express Adapter" icon="node" href="/adapters/express">
+    Check out the Express adapter
+  </Card>
+</CardGroup>

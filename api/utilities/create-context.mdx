@@ -1,0 +1,244 @@
+---
+title: 'createContext'
+description: 'Create scoped variables for async functions'
+icon: 'layer-group'
+---
+
+Create context allows you to create scoped variables that persist across async function calls, similar to React's Context API.
+
+## Import
+
+```typescript
+import { createContext } from 'xmcp';
+```
+
+## Usage
+
+```typescript
+interface MyContext {
+  userId: string;
+  requestId: string;
+}
+
+const myContext = createContext<MyContext>({ name: 'my-context' });
+
+myContext.provider(
+  {
+    userId: 'user-123',
+    requestId: 'req-456',
+  },
+  () => {
+    // Context is available within this callback
+    const context = myContext.getContext();
+    console.log(context.userId); // 'user-123'
+  }
+);
+```
+
+## API
+
+### createContext
+
+```typescript
+function createContext<T extends Object>(
+  options: CreateContextOptions
+): Context<T>
+```
+
+<ParamField path="options" type="object" required>
+  Configuration options for the context.
+  
+  <Expandable title="properties">
+    <ParamField path="name" type="string" required>
+      Unique name for the context. Used to identify the context storage and generate error messages.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** A `Context<T>` object with three methods: `provider`, `getContext`, and `setContext`.
+
+### Context object
+
+#### provider
+
+```typescript
+provider(initialValue: T, callback: () => void): void
+```
+
+<ParamField path="initialValue" type="T" required>
+  Initial context value to make available within the callback.
+</ParamField>
+
+<ParamField path="callback" type="() => void" required>
+  Function to execute with the context available. All async operations within this callback will have access to the context.
+</ParamField>
+
+Run a callback with a specific context value. The context will be available to all code executed within the callback, including async operations.
+
+#### getContext
+
+```typescript
+getContext(): T
+```
+
+**Returns:** The current context value.
+
+**Throws:** Error if called outside of a provider scope.
+
+Retrieve the current context value. Must be called within a provider callback.
+
+#### setContext
+
+```typescript
+setContext(data: Partial<T>): void
+```
+
+<ParamField path="data" type="Partial<T>" required>
+  Partial context data to merge with the existing context.
+</ParamField>
+
+**Throws:** Error if called outside of a provider scope.
+
+Partially update the context by merging new data with the existing context.
+
+## Examples
+
+### Basic usage
+
+```typescript
+interface RequestContext {
+  userId: string;
+  role: string;
+}
+
+const requestContext = createContext<RequestContext>({
+  name: 'request-context',
+});
+
+function handleRequest(userId: string, role: string) {
+  requestContext.provider(
+    { userId, role },
+    async () => {
+      await processRequest();
+    }
+  );
+}
+
+async function processRequest() {
+  const { userId, role } = requestContext.getContext();
+  console.log(`Processing request for user ${userId} with role ${role}`);
+}
+```
+
+### Updating context
+
+```typescript
+interface AppContext {
+  count: number;
+  timestamp: number;
+}
+
+const appContext = createContext<AppContext>({ name: 'app-context' });
+
+appContext.provider(
+  { count: 0, timestamp: Date.now() },
+  () => {
+    // Get initial context
+    console.log(appContext.getContext().count); // 0
+    
+    // Update context
+    appContext.setContext({ count: 5 });
+    
+    // Get updated context
+    console.log(appContext.getContext().count); // 5
+    console.log(appContext.getContext().timestamp); // Original timestamp preserved
+  }
+);
+```
+
+### With async operations
+
+```typescript
+interface TraceContext {
+  traceId: string;
+  spanId: string;
+}
+
+const traceContext = createContext<TraceContext>({ name: 'trace-context' });
+
+async function performOperation() {
+  const { traceId, spanId } = traceContext.getContext();
+  console.log(`[${traceId}:${spanId}] Starting operation`);
+  
+  await someAsyncTask();
+  
+  // Context is preserved across async boundaries
+  const ctx = traceContext.getContext();
+  console.log(`[${ctx.traceId}:${ctx.spanId}] Operation complete`);
+}
+
+traceContext.provider(
+  {
+    traceId: 'trace-123',
+    spanId: 'span-456',
+  },
+  async () => {
+    await performOperation();
+  }
+);
+```
+
+## Implementation details
+
+The context implementation uses Node.js `AsyncLocalStorage` to maintain context across async operations. It also includes a fallback mechanism for environments where `AsyncLocalStorage` may not work as expected.
+
+### Global singleton
+
+Contexts are stored globally by name. Creating a context with the same name multiple times returns the same context instance:
+
+```typescript
+const ctx1 = createContext({ name: 'my-context' });
+const ctx2 = createContext({ name: 'my-context' });
+
+console.log(ctx1 === ctx2); // true
+```
+
+### Error handling
+
+Calling `getContext()` or `setContext()` outside of a provider scope throws an error:
+
+```typescript
+const myContext = createContext<{ value: string }>({
+  name: 'my-context',
+});
+
+// This will throw an error
+try {
+  myContext.getContext();
+} catch (error) {
+  console.error(error.message);
+  // 'getContext() can only be used within the my-context context.'
+}
+```
+
+<Warning>
+  Always ensure `getContext()` and `setContext()` are called within a `provider()` callback to avoid runtime errors.
+</Warning>
+
+## Use cases
+
+- **Request tracing**: Maintain trace IDs and span IDs across async operations
+- **User context**: Store authenticated user information for the duration of a request
+- **Configuration**: Provide environment-specific config throughout the call stack
+- **Logging**: Add contextual information to all log statements within a scope
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Middleware" icon="filter" href="/features/middleware">
+    Learn about middleware in xmcp
+  </Card>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Using context for authentication
+  </Card>
+</CardGroup>

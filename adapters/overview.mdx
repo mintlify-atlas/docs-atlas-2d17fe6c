@@ -1,0 +1,203 @@
+---
+title: Adapters Overview
+description: Integrate xmcp into your existing web framework
+---
+
+## What are Adapters?
+
+Adapters allow you to integrate xmcp into your existing web applications instead of running it as a standalone server. They provide a seamless way to add MCP capabilities to Next.js, Express, or NestJS applications.
+
+## Standalone vs Adapter Mode
+
+xmcp can run in two modes:
+
+### Standalone Mode
+
+Run xmcp as an independent HTTP server:
+
+```bash
+xmcp dev
+```
+
+This creates a dedicated MCP server on a separate port, ideal for:
+- Quick prototyping and testing
+- Microservice architectures
+- When you want MCP isolated from your main application
+
+### Adapter Mode
+
+Integrate xmcp directly into your existing web framework:
+
+```typescript xmcp.config.ts
+export default {
+  http: true,
+  experimental: {
+    adapter: "nextjs" // or "express" or "nestjs"
+  }
+}
+```
+
+Adapters are ideal for:
+- Adding MCP to existing applications
+- Sharing authentication and middleware
+- Unified deployment and monitoring
+- Leveraging framework-specific features
+
+## Available Adapters
+
+### Next.js Adapter
+
+<Card title="Next.js" icon="react" href="/adapters/nextjs">
+  Integrate xmcp into Next.js App Router with native support for API routes and authentication
+</Card>
+
+**Best for:**
+- Full-stack React applications
+- Edge runtime support
+- OAuth 2.0 Bearer token authentication
+- Server components and API routes
+
+**Key Features:**
+- Drop-in API route handler
+- Built-in OAuth authentication
+- Web standards (Request/Response)
+- Protected resource metadata endpoints
+
+### Express Adapter
+
+<Card title="Express" icon="node" href="/adapters/express">
+  Add xmcp to your Express.js server with minimal configuration
+</Card>
+
+**Best for:**
+- Traditional Node.js REST APIs
+- Existing Express applications
+- Custom middleware integration
+- Simple, straightforward setup
+
+**Key Features:**
+- Single-function integration
+- CORS support out of the box
+- Works with existing Express middleware
+- Lightweight and performant
+
+### NestJS Adapter
+
+<Card title="NestJS" icon="shield" href="/adapters/nestjs">
+  Bring xmcp into your NestJS application with full dependency injection support
+</Card>
+
+**Best for:**
+- Enterprise applications
+- TypeScript-first architecture
+- Dependency injection patterns
+- Advanced guards and interceptors
+
+**Key Features:**
+- Module, controller, and service structure
+- NestJS dependency injection
+- Guards for authentication
+- OAuth module for protected resources
+- Exception filters for error handling
+
+## Choosing an Adapter
+
+<AccordionGroup>
+  <Accordion title="I have an existing Next.js app">
+    Use the **Next.js adapter**. It integrates seamlessly with App Router and supports modern authentication patterns.
+  </Accordion>
+  
+  <Accordion title="I have a simple Express API">
+    Use the **Express adapter**. It's the simplest integration with minimal overhead.
+  </Accordion>
+  
+  <Accordion title="I have a NestJS application">
+    Use the **NestJS adapter**. It follows NestJS patterns and supports dependency injection.
+  </Accordion>
+  
+  <Accordion title="I need OAuth authentication">
+    Use **Next.js** or **NestJS** adapters. Both provide built-in OAuth 2.0 support with protected resource metadata.
+  </Accordion>
+  
+  <Accordion title="I'm starting from scratch">
+    Consider **standalone mode** first for simplicity, or choose **Next.js** for a full-stack framework.
+  </Accordion>
+</AccordionGroup>
+
+## Configuration
+
+All adapters are configured through `xmcp.config.ts`:
+
+```typescript xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true, // Enable HTTP transport
+  experimental: {
+    adapter: "nextjs" // or "express" or "nestjs"
+  },
+  paths: {
+    tools: "src/tools",
+    prompts: "src/prompts",
+    resources: "src/resources"
+  }
+};
+
+export default config;
+```
+
+## Build Process
+
+With adapters, you typically run two processes during development:
+
+<CodeGroup>
+
+```bash Next.js
+xmcp dev & next dev
+```
+
+```bash Express
+xmcp dev & tsx watch src/index.ts
+```
+
+```bash NestJS
+xmcp dev & nest start --watch
+```
+
+</CodeGroup>
+
+For production builds:
+
+<CodeGroup>
+
+```bash Next.js
+xmcp build && next build
+```
+
+```bash Express
+xmcp build && tsx src/index.ts
+```
+
+```bash NestJS
+xmcp build && nest build
+```
+
+</CodeGroup>
+
+<Note>
+  The `xmcp` CLI compiles your tools, prompts, and resources into optimized code that the adapter can use at runtime.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Next.js Setup" icon="react" href="/adapters/nextjs">
+    Configure the Next.js adapter
+  </Card>
+  <Card title="Express Setup" icon="node" href="/adapters/express">
+    Configure the Express adapter
+  </Card>
+  <Card title="NestJS Setup" icon="shield" href="/adapters/nestjs">
+    Configure the NestJS adapter
+  </Card>
+</CardGroup>

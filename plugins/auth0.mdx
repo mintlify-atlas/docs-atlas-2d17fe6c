@@ -1,0 +1,445 @@
+---
+title: Auth0 Plugin
+description: Add enterprise authentication to your xmcp server with Auth0
+---
+
+The Auth0 plugin integrates enterprise-grade authentication with OAuth 2.0, fine-grained permissions, and M2M authentication.
+
+## Installation
+
+```bash
+npm install @xmcp-dev/auth0
+```
+
+## Features
+
+- OAuth 2.0 with Dynamic Client Registration (DCR)
+- Resource Parameter support for MCP protocol
+- Fine-grained permissions using Auth0 API scopes
+- Access to Auth0 Management API
+- JWT token verification with JWKS
+- Tool-level authorization
+
+## Setup
+
+### 1. Configure Auth0 Tenant
+
+Your Auth0 tenant requires specific configuration for MCP compatibility.
+
+#### Enable Dynamic Client Registration
+
+1. Go to **Auth0 Dashboard** → **Settings** → **Advanced**
+2. Enable **"OIDC Dynamic Application Registration"**
+3. Save changes
+
+#### Enable Resource Parameter
+
+1. Go to **Auth0 Dashboard** → **Settings** → **Advanced**
+2. Enable **"Resource Parameter Compatibility Profile"**
+3. Save changes
+
+#### Promote Connection to Domain Level
+
+1. Go to **Auth0 Dashboard** → **Authentication** → **Database**
+2. Select your connection (e.g., `Username-Password-Authentication`)
+3. Enable **"Enable for third-party clients"**
+4. Save changes
+
+#### Create API Resource
+
+<Warning>
+The API identifier must match your `BASE_URL` with a trailing slash.
+</Warning>
+
+1. Go to **Auth0 Dashboard** → **Applications** → **APIs**
+2. Click **Create API**
+3. Set:
+   - **Name**: `MCP Server API`
+   - **Identifier**: `http://localhost:3001/` (with trailing slash)
+4. Go to **Permissions** tab and add tool permissions:
+   - `tool:greet`
+   - `tool:whoami`
+   - Add more as needed
+
+#### Set Default Audience
+
+1. Go to **Auth0 Dashboard** → **Settings** → **General**
+2. Set **Default Audience** to your API identifier
+3. Save changes
+
+### 2. Environment Variables
+
+Create a `.env` file:
+
+```bash
+# Auth0 Configuration
+DOMAIN=your-tenant.auth0.com
+AUDIENCE=http://127.0.0.1:3001/
+CLIENT_ID=your-m2m-client-id
+CLIENT_SECRET=your-m2m-client-secret
+
+# Server Configuration
+BASE_URL=http://127.0.0.1:3001
+```
+
+<Note>
+Create a Machine-to-Machine application in Auth0 to get your `CLIENT_ID` and `CLIENT_SECRET`. Authorize it for the Management API.
+</Note>
+
+### 3. Create Middleware
+
+Create `src/middleware.ts`:
+
+```typescript
+import { auth0Provider } from "@xmcp-dev/auth0";
+
+export default auth0Provider({
+  domain: process.env.DOMAIN!,
+  audience: process.env.AUDIENCE!,
+  baseURL: process.env.BASE_URL!,
+  clientId: process.env.CLIENT_ID!,
+  clientSecret: process.env.CLIENT_SECRET!,
+});
+```
+
+### 4. Configure xmcp
+
+In `xmcp.config.ts`, enable HTTP transport:
+
+```typescript
+import type { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+  paths: {
+    prompts: false,
+    resources: false,
+  },
+};
+
+export default config;
+```
+
+## Configuration
+
+### Required Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `domain` | `string` | Auth0 tenant domain (e.g., `your-tenant.auth0.com`) |
+| `audience` | `string` | API identifier (must match `baseURL` with trailing slash) |
+| `baseURL` | `string` | Base URL of your MCP server |
+| `clientId` | `string` | Auth0 M2M application client ID |
+| `clientSecret` | `string` | Auth0 M2M application client secret |
+
+### Optional Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `scopesSupported` | `string[]` | Additional OAuth scopes beyond default (`openid`, `profile`, `email`) |
+| `management.audience` | `string` | Custom Management API audience |
+| `management.resourceServerIdentifier` | `string` | Custom resource server identifier for permissions |
+
+## Usage in Tools
+
+### Access Authentication Info
+
+```typescript src/tools/whoami.ts
+import { getAuthInfo } from "@xmcp-dev/auth0";
+import type { ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "whoami",
+  description: "Get current user identity",
+};
+
+export default function whoami() {
+  const authInfo = getAuthInfo();
+  
+  return {
+    userId: authInfo.user.sub,
+    name: authInfo.user.name,
+    email: authInfo.user.email,
+    scopes: authInfo.scopes,
+    permissions: authInfo.permissions,
+    expiresAt: authInfo.expiresAt,
+  };
+}
+```
+
+### Use in Tool Logic
+
+```typescript src/tools/greet.ts
+import { z } from "zod";
+import type { InferSchema, ToolMetadata } from "xmcp";
+import { getAuthInfo } from "@xmcp-dev/auth0";
+
+export const schema = {
+  name: z.string().optional().describe("Name to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user with their Auth0 identity",
+};
+
+export default function greet({ name }: InferSchema<typeof schema>) {
+  const authInfo = getAuthInfo();
+  const displayName = authInfo.user.name ?? name ?? "there";
+  return `Hello, ${displayName}! Your Auth0 user ID is ${authInfo.user.sub}`;
+}
+```
+
+### Access Management API
+
+Access the Auth0 Management API client:
+
+```typescript
+import { getManagement } from "@xmcp-dev/auth0";
+
+export default async function listUsers() {
+  const management = getManagement();
+  
+  const users = await management.users.getAll({
+    per_page: 10,
+    page: 0,
+  });
+  
+  return users.data;
+}
+```
+
+### Check Permissions Programmatically
+
+```typescript
+import { fetchUserPermissions, userHasToolPermission } from "@xmcp-dev/auth0";
+import { getManagement, getAuthInfo } from "@xmcp-dev/auth0";
+
+export default async function checkPermission() {
+  const authInfo = getAuthInfo();
+  const management = getManagement();
+  
+  // Get user's permissions
+  const permissions = await fetchUserPermissions(
+    management,
+    authInfo.user.sub,
+    process.env.AUDIENCE!
+  );
+  
+  // Check specific tool permission
+  const hasAccess = await userHasToolPermission(
+    management,
+    authInfo.user.sub,
+    process.env.AUDIENCE!,
+    "greet"
+  );
+  
+  return { permissions, hasAccess };
+}
+```
+
+## AuthInfo Type
+
+The `getAuthInfo()` function returns:
+
+```typescript
+interface AuthInfo {
+  token: string;                    // JWT access token
+  clientId: string;                 // OAuth client ID
+  scopes: readonly string[];        // OAuth scopes
+  permissions?: readonly string[];  // Auth0 permissions
+  expiresAt?: number;               // Token expiration timestamp
+  user: {
+    sub: string;                    // User ID
+    client_id?: string;             // Client ID from token
+    azp?: string;                   // Authorized party
+    name?: string;                  // User's full name
+    email?: string;                 // User's email
+  };
+}
+```
+
+## Tool-Level Authorization
+
+The Auth0 plugin automatically enforces tool permissions:
+
+1. **Permission Defined**: If a tool permission exists in Auth0 (e.g., `tool:greet`), the user's token must include it
+2. **No Permission Defined**: If the permission doesn't exist in Auth0, the tool is public
+3. **Management API Failure**: If the Management API is unavailable, access is denied (secure default)
+
+### Define Tool Permissions
+
+Add permissions in Auth0 Dashboard:
+
+1. Go to **Applications** → **APIs** → Your API
+2. Click **Permissions** tab
+3. Add permission with format `tool:<toolName>`:
+   - `tool:greet`
+   - `tool:whoami`
+   - `tool:admin-action`
+
+### Assign Permissions to Users
+
+Assign permissions via Management API or dashboard:
+
+```typescript
+import { getManagement } from "@xmcp-dev/auth0";
+
+export default async function assignPermission(userId: string) {
+  const management = getManagement();
+  
+  await management.users.assignPermissions(
+    { id: userId },
+    {
+      permissions: [
+        {
+          permission_name: "tool:greet",
+          resource_server_identifier: process.env.AUDIENCE!,
+        },
+      ],
+    }
+  );
+}
+```
+
+## OAuth Metadata Endpoints
+
+The plugin automatically exposes:
+
+### Resource Metadata
+
+```bash
+GET /.well-known/oauth-protected-resource
+```
+
+Returns:
+
+```json
+{
+  "resource": "http://localhost:3001",
+  "authorization_servers": ["https://your-tenant.auth0.com"],
+  "bearer_methods_supported": ["header"],
+  "scopes_supported": ["openid", "profile", "email"]
+}
+```
+
+### Authorization Server Metadata
+
+```bash
+GET /.well-known/oauth-authorization-server
+```
+
+Proxies Auth0's OpenID configuration from:
+```
+https://your-tenant.auth0.com/.well-known/openid-configuration
+```
+
+## Example Project
+
+Complete example at [`examples/auth0-http`](https://github.com/basementstudio/xmcp/tree/main/examples/auth0-http):
+
+```typescript title="src/middleware.ts"
+import { auth0Provider } from "@xmcp-dev/auth0";
+
+export default auth0Provider({
+  domain: process.env.DOMAIN!,
+  audience: process.env.AUDIENCE!,
+  baseURL: process.env.BASE_URL!,
+  clientId: process.env.CLIENT_ID!,
+  clientSecret: process.env.CLIENT_SECRET!,
+});
+```
+
+```typescript title="src/tools/greet.ts"
+import { z } from "zod";
+import type { InferSchema, ToolMetadata } from "xmcp";
+import { getAuthInfo } from "@xmcp-dev/auth0";
+
+export const schema = {
+  name: z.string().optional().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user with their Auth0 identity",
+};
+
+export default function greet({ name }: InferSchema<typeof schema>): string {
+  const authInfo = getAuthInfo();
+  const displayName = authInfo.user.name ?? name ?? "there";
+  return `Hello, ${displayName}! Your Auth0 user ID is ${authInfo.user.sub}`;
+}
+```
+
+## Troubleshooting
+
+### "Missing or invalid bearer token"
+
+The MCP client isn't sending an access token:
+- Verify Dynamic Client Registration is enabled
+- Check Resource Parameter is enabled
+- Ensure the client completed OAuth flow
+
+### "Token has expired"
+
+Access tokens are short-lived. The client should automatically refresh:
+- Disconnect and reconnect in the MCP client
+- Check system clock is accurate
+- Verify refresh token grant is enabled
+
+### "Token verification failed"
+
+- Verify `DOMAIN` matches your Auth0 tenant
+- Check `AUDIENCE` exactly matches the API identifier
+- Ensure API is not deleted or disabled
+- Verify JWKS endpoint is accessible
+
+### "You don't have permission to use the tool"
+
+User lacks required permission:
+- Check permission exists in Auth0 API permissions
+- Verify user has been assigned the permission
+- Ensure permission name format is `tool:<toolName>`
+- Check Management API credentials are valid
+
+## API Reference
+
+### Functions
+
+#### `auth0Provider(config: Config): Middleware`
+
+Creates Auth0 authentication middleware.
+
+#### `getAuthInfo(): AuthInfo`
+
+Returns current authenticated user's information. Must be called within a request context.
+
+#### `getClient(): ApiClient`
+
+Returns Auth0 API client instance for Token Vault operations.
+
+#### `getManagement(): ManagementClient`
+
+Returns Auth0 Management API client.
+
+#### `fetchResourceServerScopes(management: ManagementClient, audience: string): Promise<string[]>`
+
+Fetches available scopes from the Auth0 API resource.
+
+#### `fetchUserPermissions(management: ManagementClient, userId: string, audience: string): Promise<string[]>`
+
+Fetches user's assigned permissions for an API.
+
+#### `isToolPermissionDefined(management: ManagementClient, audience: string, toolName: string): Promise<boolean | null>`
+
+Checks if a tool permission exists in Auth0. Returns `null` on API failure.
+
+#### `userHasToolPermission(management: ManagementClient, userId: string, audience: string, toolName: string): Promise<boolean | null>`
+
+Checks if user has a specific tool permission. Returns `null` on API failure.
+
+## Learn More
+
+- [Auth0 Documentation](https://auth0.com/docs)
+- [OAuth 2.0 Resource Parameter](https://www.rfc-editor.org/rfc/rfc8707.html)
+- [MCP OAuth Specification](https://spec.modelcontextprotocol.io/specification/2024-11-05/authentication/oauth/)

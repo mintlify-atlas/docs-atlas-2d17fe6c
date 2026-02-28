@@ -1,0 +1,198 @@
+---
+title: Tool Types
+description: Type definitions for xmcp tools
+---
+
+## ToolMetadata
+
+Metadata interface for defining MCP tools.
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the tool
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description
+</ParamField>
+
+<ParamField path="annotations" type="ToolAnnotations">
+  Optional hints about tool behavior
+</ParamField>
+
+<ParamField path="_meta" type="object">
+  Metadata for the tool. Supports nested OpenAI metadata and other vendor extensions.
+  
+  <ParamField path="_meta.openai" type="OpenAIMetadata">
+    OpenAI-specific metadata for tool configuration
+  </ParamField>
+  
+  <ParamField path="_meta.ui" type="OpenAIMetadata">
+    UI-specific metadata for tool rendering
+  </ParamField>
+  
+  <ParamField path="_meta[key]" type="unknown">
+    Additional vendor-specific metadata extensions
+  </ParamField>
+</ParamField>
+
+## ToolAnnotations
+
+Hints about tool behavior and characteristics.
+
+<ParamField path="title" type="string">
+  Human-readable title for the tool
+</ParamField>
+
+<ParamField path="readOnlyHint" type="boolean">
+  If true, the tool does not modify its environment
+</ParamField>
+
+<ParamField path="destructiveHint" type="boolean">
+  If true, the tool may perform destructive updates
+</ParamField>
+
+<ParamField path="idempotentHint" type="boolean">
+  If true, repeated calls with same args have no additional effect
+</ParamField>
+
+<ParamField path="openWorldHint" type="boolean">
+  If true, tool interacts with external entities
+</ParamField>
+
+<ParamField path="[key]" type="any">
+  Additional custom annotations
+</ParamField>
+
+## ToolSchema
+
+Type definition for tool input schemas.
+
+```typescript
+type ToolSchema = Record<string, CompatibleZodType>
+```
+
+A record mapping parameter names to Zod schema types. Supports both Zod v3 and v4 schemas.
+
+## InferSchema
+
+Utility type for inferring TypeScript types from tool schemas.
+
+```typescript
+type InferSchema<T extends Record<string, unknown>> = {
+  [K in keyof T]: T[K] extends z.ZodTypeAny
+    ? z.infer<T[K]>
+    : T[K] extends ZodTypeV4<unknown>
+      ? inferV4<T[K]>
+      : never;
+}
+```
+
+Automatically infers the TypeScript type from a `ToolSchema` definition, supporting both Zod v3 and v4 schemas.
+
+## ToolExtraArguments
+
+Extra arguments passed to MCP tool functions.
+
+<ParamField path="signal" type="AbortSignal" required>
+  An abort signal used to communicate if the request was cancelled from the sender's side
+</ParamField>
+
+<ParamField path="authInfo" type="object">
+  Information about a validated access token, provided to request handlers
+  
+  <ParamField path="authInfo.token" type="string" required>
+    The access token
+  </ParamField>
+  
+  <ParamField path="authInfo.clientId" type="string" required>
+    The client ID associated with this token
+  </ParamField>
+  
+  <ParamField path="authInfo.scopes" type="string[]" required>
+    Scopes associated with this token
+  </ParamField>
+  
+  <ParamField path="authInfo.expiresAt" type="number">
+    When the token expires (in seconds since epoch)
+  </ParamField>
+  
+  <ParamField path="authInfo.resource" type="URL">
+    The RFC 8707 resource server identifier for which this token is valid
+  </ParamField>
+  
+  <ParamField path="authInfo.extra" type="Record<string, unknown>">
+    Additional data associated with the token
+  </ParamField>
+</ParamField>
+
+<ParamField path="sessionId" type="string">
+  The session ID from the transport, if available
+</ParamField>
+
+<ParamField path="_meta" type="object">
+  Metadata from the original request
+  
+  <ParamField path="_meta.progressToken" type="string | number">
+    Progress token for tracking long-running operations
+  </ParamField>
+</ParamField>
+
+<ParamField path="requestId" type="string | number" required>
+  The JSON-RPC ID of the request being handled
+</ParamField>
+
+<ParamField path="requestInfo" type="object">
+  The original HTTP request information
+  
+  <ParamField path="requestInfo.headers" type="Record<string, string | string[] | undefined>" required>
+    The headers of the request
+  </ParamField>
+</ParamField>
+
+<ParamField path="sendNotification" type="(notification: any) => Promise<void>" required>
+  Sends a notification that relates to the current request being handled
+</ParamField>
+
+<ParamField path="sendRequest" type="function" required>
+  Sends a request that relates to the current request being handled
+  
+  **Signature:**
+  ```typescript
+  <U extends z.ZodType<object>>(
+    request: any,
+    resultSchema: U,
+    options?: {
+      onprogress?: (progress: any) => void;
+      signal?: AbortSignal;
+      timeout?: number;
+      resetTimeoutOnProgress?: boolean;
+      maxTotalTimeout?: number;
+      [key: string]: unknown;
+    }
+  ) => Promise<z.infer<U>>
+  ```
+  
+  <ParamField path="options.onprogress" type="(progress: any) => void">
+    Progress notification callback
+  </ParamField>
+  
+  <ParamField path="options.signal" type="AbortSignal">
+    Abort signal for cancelling the request
+  </ParamField>
+  
+  <ParamField path="options.timeout" type="number">
+    Request timeout in milliseconds
+  </ParamField>
+  
+  <ParamField path="options.resetTimeoutOnProgress" type="boolean">
+    Whether receiving progress notifications resets the timeout
+  </ParamField>
+  
+  <ParamField path="options.maxTotalTimeout" type="number">
+    Maximum total time to wait for a response
+  </ParamField>
+  
+  <ParamField path="options[key]" type="unknown">
+    Additional transport-specific options
+  </ParamField>
+</ParamField>

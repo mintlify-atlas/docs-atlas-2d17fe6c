@@ -1,0 +1,113 @@
+---
+title: Experimental Configuration
+description: Experimental features and framework adapters
+---
+
+## ExperimentalConfig
+
+Configuration for experimental features in xmcp. These features are subject to change and may not be stable.
+
+<ParamField path="adapter" type="'express' | 'nextjs' | 'nestjs'" default="undefined">
+  Framework adapter to use for HTTP transport integration.
+  
+  Available adapters:
+  - `"express"` - Express.js adapter
+  - `"nextjs"` - Next.js adapter
+  - `"nestjs"` - NestJS adapter
+</ParamField>
+
+## Adapters
+
+Adapters allow xmcp to integrate with popular Node.js frameworks, providing framework-specific optimizations and middleware support.
+
+### Express Adapter
+
+Integrate with Express.js applications:
+
+```typescript
+export default {
+  http: {
+    port: 3001,
+  },
+  experimental: {
+    adapter: "express",
+  },
+};
+```
+
+### Next.js Adapter
+
+Integrate with Next.js applications:
+
+```typescript
+export default {
+  http: {
+    port: 3001,
+  },
+  experimental: {
+    adapter: "nextjs",
+  },
+};
+```
+
+### NestJS Adapter
+
+Integrate with NestJS applications:
+
+```typescript
+export default {
+  http: {
+    port: 3001,
+  },
+  experimental: {
+    adapter: "nestjs",
+  },
+};
+```
+
+## Examples
+
+### Express Integration
+
+```typescript
+import type { XmcpConfigInputSchema } from "xmcp";
+
+const config: XmcpConfigInputSchema = {
+  http: {
+    port: 3000,
+    endpoint: "/api/mcp",
+  },
+  experimental: {
+    adapter: "express",
+  },
+};
+
+export default config;
+```
+
+### Next.js API Route
+
+```typescript
+import type { XmcpConfigInputSchema } from "xmcp";
+
+const config: XmcpConfigInputSchema = {
+  http: {
+    endpoint: "/api/mcp",
+  },
+  experimental: {
+    adapter: "nextjs",
+  },
+};
+
+export default config;
+```
+
+## Warning
+
+Experimental features may:
+- Change without notice
+- Have incomplete documentation
+- Contain bugs or unexpected behavior
+- Be removed in future versions
+
+Use experimental features at your own risk and avoid them in production environments unless you understand the implications.

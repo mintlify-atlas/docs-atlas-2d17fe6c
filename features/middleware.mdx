@@ -1,0 +1,156 @@
+---
+title: Middleware
+description: Learn how to use and create custom middleware in xmcp to handle authentication, logging, and request processing
+---
+
+## Overview
+
+Middleware in xmcp allows you to intercept and process HTTP requests before they reach your MCP server endpoints. Use middleware for authentication, logging, rate limiting, and other cross-cutting concerns.
+
+xmcp supports two types of middleware:
+- **Express Middleware** - Traditional Express.js `RequestHandler` functions
+- **Web Middleware** - Modern async functions with MCP-specific context
+
+## Middleware Types
+
+### Express Middleware
+
+Standard Express.js middleware pattern with `req`, `res`, and `next`:
+
+```typescript packages/xmcp/src/types/middleware.ts
+export type Middleware = RequestHandler | RequestHandlerAndRouter;
+```
+
+### Web Middleware
+
+Modern async middleware with MCP authentication context:
+
+```typescript packages/xmcp/src/types/middleware.ts
+export type WebMiddlewareContext = {
+  auth?: AuthInfo;
+  setAuth: (auth: AuthInfo) => void;
+};
+
+export type WebMiddleware = (
+  request: Request,
+  context: WebMiddlewareContext
+) => Promise<Response | void> | Response | void;
+```
+
+## Creating Custom Middleware
+
+Create a `src/middleware.ts` file in your project to define custom middleware.
+
+### Basic Express Middleware
+
+```typescript examples/middlewares-custom/src/middleware.ts
+import { type Middleware } from "xmcp";
+import jwt from "jsonwebtoken";
+
+const middleware: Middleware = (req, res, next) => {
+  const EXAMPLE_SECRET = "a-string-secret-at-least-256-bits-long";
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.status(401).json({ error: "No authorization header" });
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+  if (!token) {
+    res.status(401).json({ error: "No token provided" });
+    return;
+  }
+
+  try {
+    const decoded = jwt.verify(token, EXAMPLE_SECRET);
+    console.log(decoded);
+  } catch (err) {
+    res.status(401).json({ error: "Invalid token" });
+    return;
+  }
+  next();
+};
+
+export default middleware;
+```
+
+### Middleware Configuration
+
+Middleware is automatically loaded from `src/middleware.ts` when you run your xmcp server:
+
+```typescript examples/middlewares-custom/xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: {
+    port: 3002,
+  },
+};
+
+export default config;
+```
+
+## Middleware Arrays
+
+Compose multiple middleware functions by exporting an array:
+
+```typescript examples/middlewares-array/src/middleware.ts
+import { apiKeyAuthMiddleware, type Middleware } from "xmcp";
+
+const middleware: Middleware[] = [
+  apiKeyAuthMiddleware({
+    headerName: "x-api-key",
+    apiKey: "12345",
+  }),
+  (_req, _res, next) => {
+    console.log("Hello from middleware");
+    next();
+  },
+];
+
+export default middleware;
+```
+
+Middleware executes in order. If any middleware responds without calling `next()`, subsequent middleware and routes are not executed.
+
+## RequestHandlerAndRouter Type
+
+For advanced use cases, combine middleware with Express routers:
+
+```typescript packages/xmcp/src/types/middleware.ts
+export type RequestHandlerAndRouter = {
+  middleware: RequestHandler;
+  router: Router;
+};
+```
+
+This allows you to create modular middleware with their own route handlers.
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Call next()" icon="arrow-right">
+    If you don't send a response, call `next()` to pass control to the next middleware
+  </Card>
+  <Card title="Handle Errors Gracefully" icon="shield-check">
+    Always wrap auth logic in try-catch blocks and return appropriate HTTP status codes
+  </Card>
+  <Card title="Use Built-in Auth" icon="key">
+    For common auth patterns, use `apiKeyAuthMiddleware` or `jwtAuthMiddleware` instead of custom code
+  </Card>
+  <Card title="Keep Middleware Focused" icon="bullseye">
+    Each middleware should do one thing well. Compose multiple middleware for complex logic
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Learn about built-in authentication middleware
+  </Card>
+  <Card title="Transports" icon="server" href="/features/transports">
+    Configure HTTP and STDIO transports
+  </Card>
+</CardGroup>

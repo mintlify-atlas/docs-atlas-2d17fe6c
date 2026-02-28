@@ -1,0 +1,558 @@
+---
+title: Polar Plugin
+description: Add license key validation and usage-based billing to your xmcp server with Polar
+---
+
+The Polar plugin integrates license key management and usage-based billing with meter credits for your MCP server.
+
+## Installation
+
+```bash
+npm install @xmcp-dev/polar
+```
+
+## Features
+
+- License key validation
+- Usage-based billing with meter credits
+- Subscription management
+- Checkout integration
+- Event ingestion for usage tracking
+- Customer state management
+- Sandbox and production environments
+
+## Setup
+
+### 1. Configure Polar
+
+#### Create Account and Product
+
+1. Sign up for [Polar](https://polar.sh)
+2. Create an organization
+3. Create a product with meter credit benefit
+4. Note your:
+   - **Organization ID**
+   - **Product ID**
+   - **Access Token** (from Settings → API)
+
+#### Create Meter Credit Benefit
+
+1. Go to your product settings
+2. Add a **Meter Credit** benefit
+3. Configure meter settings:
+   - Event name (e.g., `tool_call`)
+   - Credit amount per purchase
+   - Tracking metadata
+
+### 2. Environment Variables
+
+Create a `.env` file:
+
+```bash
+# Polar Configuration
+POLAR_TOKEN=polar_pat_...
+POLAR_ORGANIZATION_ID=org_...
+POLAR_PRODUCT_ID=prod_...
+```
+
+<Note>
+Use `sandbox` environment for testing. Switch to `production` when ready to go live.
+</Note>
+
+### 3. Create Polar Instance
+
+Create `src/lib/polar.ts`:
+
+```typescript
+import { PolarProvider } from "@xmcp-dev/polar";
+
+export const polar = PolarProvider.getInstance({
+  type: "sandbox", // or "production"
+  token: process.env.POLAR_TOKEN!,
+  organizationId: process.env.POLAR_ORGANIZATION_ID!,
+  productId: process.env.POLAR_PRODUCT_ID!,
+});
+```
+
+### 4. Use in Tools
+
+Validate license keys in your tools:
+
+```typescript src/tools/paywall.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { headers } from "xmcp/headers";
+import { polar } from "../lib/polar";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user (requires valid license)",
+};
+
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  const licenseKey = headers()["license-key"];
+  
+  const response = await polar.validateLicenseKey(licenseKey as string, {
+    name: "tool_call",
+    metadata: { tool_name: "greet", calls: 1 },
+  });
+
+  if (!response.valid) {
+    return response.message;
+  }
+
+  return `Hello, ${name}!`;
+}
+```
+
+## Configuration
+
+### Required Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `token` | `string` | Polar API access token |
+| `organizationId` | `string` | Polar organization ID |
+| `productId` | `string` | Product ID with meter credit benefit |
+
+### Optional Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `type` | `"sandbox" \| "production"` | `"production"` | Environment type |
+
+## License Key Validation
+
+### Basic Validation
+
+Validate a license key:
+
+```typescript
+import { polar } from "../lib/polar";
+
+const result = await polar.validateLicenseKey(licenseKey, {
+  name: "tool_call",
+  metadata: { tool_name: "my-tool" },
+});
+
+if (!result.valid) {
+  console.error(result.code, result.message);
+  // Handle invalid license
+}
+```
+
+### Validation Response
+
+```typescript
+interface ValidateLicenseKeyResult {
+  valid: boolean;
+  code: string;
+  message: string;
+}
+```
+
+### Validation Codes
+
+| Code | Description |
+|------|-------------|
+| `license_key_valid` | License is valid and active |
+| `license_key_missing` | No license key provided |
+| `license_key_not_granted` | License access denied |
+| `license_key_usage_limit_reached` | Usage limit exceeded |
+| `license_key_expired` | License has expired |
+| `meter_credit_exhausted` | No usage credits remaining |
+| `license_key_error` | Validation error occurred |
+
+## Usage Tracking
+
+### Event Ingestion
+
+The plugin automatically tracks usage when you validate licenses:
+
+```typescript
+const result = await polar.validateLicenseKey(licenseKey, {
+  name: "tool_call",          // Event name (matches meter configuration)
+  metadata: {                  // Event metadata
+    tool_name: "greet",
+    calls: 1,
+    timestamp: Date.now(),
+  },
+});
+```
+
+### Event Structure
+
+```typescript
+interface Event {
+  name: string;                          // Event name
+  metadata: Record<string, string | number>; // Custom metadata
+}
+```
+
+### Meter Credits
+
+Polar tracks usage against meter credits:
+
+1. **Customer purchases** product with meter credits
+2. **License validation** checks available credits
+3. **Event ingestion** decrements credits
+4. **No credits** = validation fails
+
+## Customer State
+
+### Check Usage
+
+The plugin automatically checks customer meter credit balance:
+
+```typescript
+// Automatic during validation
+const result = await polar.validateLicenseKey(licenseKey, event);
+
+if (result.code === "meter_credit_exhausted") {
+  // Customer has no credits left
+  console.log(result.message);
+  // Message includes checkout URL
+}
+```
+
+### Customer State Response
+
+Internal structure (handled automatically):
+
+```typescript
+interface CustomerStateResponse {
+  id: string;
+  email?: string;
+  granted_benefits: GrantedBenefit[];
+  active_meters: ActiveMeter[];
+  active_subscriptions: any[];
+}
+
+interface ActiveMeter {
+  id: string;
+  meter_id: string;
+  consumed_units: number;
+  credited_units: number;
+  balance: number;              // Remaining credits
+}
+```
+
+## Checkout Integration
+
+### Generate Checkout URL
+
+Get a checkout link for customers:
+
+```typescript
+import { polar } from "../lib/polar";
+
+const checkoutUrl = await polar.getCheckoutUrl();
+
+console.log(`Purchase at: ${checkoutUrl}`);
+```
+
+The plugin automatically includes checkout URLs in error messages:
+
+```typescript
+const result = await polar.validateLicenseKey(licenseKey, event);
+
+if (!result.valid) {
+  // result.message includes checkout URL
+  console.log(result.message);
+  // "License key expired. Purchase a new license at: https://..."
+}
+```
+
+## Example Tool
+
+Complete example with license validation:
+
+```typescript src/tools/premium-feature.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { headers } from "xmcp/headers";
+import { polar } from "../lib/polar";
+
+export const schema = {
+  data: z.string().describe("Data to process"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "premium-feature",
+  description: "Process data (requires active license with credits)",
+};
+
+export default async function premiumFeature({ data }: InferSchema<typeof schema>) {
+  // Get license key from request headers
+  const licenseKey = headers()["license-key"] as string;
+
+  // Validate license and track usage
+  const validation = await polar.validateLicenseKey(licenseKey, {
+    name: "premium_tool_call",
+    metadata: {
+      tool_name: "premium-feature",
+      data_size: data.length,
+      timestamp: Date.now(),
+    },
+  });
+
+  // Handle invalid license
+  if (!validation.valid) {
+    return {
+      error: validation.code,
+      message: validation.message,
+    };
+  }
+
+  // Process data (license is valid)
+  const result = processData(data);
+
+  return {
+    success: true,
+    result,
+  };
+}
+
+function processData(data: string) {
+  // Your premium feature logic
+  return data.toUpperCase();
+}
+```
+
+## Example Project
+
+Complete example at [`examples/polar-http`](https://github.com/basementstudio/xmcp/tree/main/examples/polar-http):
+
+```typescript title="src/lib/polar.ts"
+import { PolarProvider } from "@xmcp-dev/polar";
+
+export const polar = PolarProvider.getInstance({
+  type: "sandbox",
+  token: process.env.POLAR_TOKEN!,
+  organizationId: process.env.POLAR_ORGANIZATION_ID!,
+  productId: process.env.POLAR_PRODUCT_ID!,
+});
+```
+
+```typescript title="src/tools/paywall.ts"
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { headers } from "xmcp/headers";
+import { polar } from "../lib/polar";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+};
+
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  const licenseKey = headers()["license-key"];
+  const response = await polar.validateLicenseKey(licenseKey as string, {
+    name: "test_tool_call",
+    metadata: { tool_name: "greet", calls: 1 },
+  });
+
+  if (!response.valid) {
+    return response.message;
+  }
+
+  return `Hello, ${name}!`;
+}
+```
+
+## License Key Format
+
+Customers pass license keys via HTTP headers:
+
+```bash
+curl -H "license-key: polar_li_..." \
+     -H "Content-Type: application/json" \
+     -d '{...}' \
+     http://localhost:3001/mcp/v1/tools/call
+```
+
+In xmcp tools, access via:
+
+```typescript
+import { headers } from "xmcp/headers";
+
+const licenseKey = headers()["license-key"];
+```
+
+## Validation Flow
+
+The validation process:
+
+1. **License Key Check**: Validates key exists and is active
+2. **Status Check**: Ensures status is `granted`
+3. **Usage Limit Check**: Validates usage hasn't exceeded limit
+4. **Expiration Check**: Ensures license hasn't expired
+5. **Meter Credit Check**: Verifies customer has available credits
+6. **Event Ingestion**: Records usage event
+7. **Return Result**: Success or error with message
+
+## Error Handling
+
+Handle different validation errors:
+
+```typescript
+const result = await polar.validateLicenseKey(licenseKey, event);
+
+switch (result.code) {
+  case "license_key_valid":
+    // Proceed with tool logic
+    break;
+    
+  case "license_key_missing":
+    // No license key provided
+    return "Please provide a license key";
+    
+  case "license_key_expired":
+    // License expired
+    return result.message; // Includes checkout URL
+    
+  case "meter_credit_exhausted":
+    // No credits remaining
+    return result.message; // Includes checkout URL
+    
+  case "license_key_usage_limit_reached":
+    // Usage limit reached
+    return result.message; // Includes checkout URL
+    
+  default:
+    // Other errors
+    return `Error: ${result.message}`;
+}
+```
+
+## Best Practices
+
+### 1. Singleton Pattern
+
+Use `getInstance()` for a single Polar instance:
+
+```typescript
+export const polar = PolarProvider.getInstance(config);
+```
+
+### 2. Environment Variables
+
+Store sensitive credentials in `.env`:
+
+```bash
+POLAR_TOKEN=polar_pat_...
+```
+
+### 3. Meaningful Event Names
+
+Use descriptive event names that match your meter configuration:
+
+```typescript
+{
+  name: "premium_tool_call",  // Matches meter name
+  metadata: { tool_name: "my-tool" }
+}
+```
+
+### 4. Error Messages
+
+Provide helpful error messages with checkout URLs:
+
+```typescript
+if (!result.valid) {
+  return result.message; // Includes purchase link
+}
+```
+
+## API Reference
+
+### PolarProvider
+
+#### `getInstance(config: Configuration): PolarProvider`
+
+Creates or returns singleton Polar instance.
+
+#### `validateLicenseKey(licenseKey: string, event: Event): Promise<ValidateLicenseKeyResult>`
+
+Validates license key and tracks usage.
+
+#### `getCheckoutUrl(): Promise<string>`
+
+Generates checkout URL for product purchase.
+
+### Types
+
+#### `Configuration`
+
+```typescript
+interface Configuration {
+  type?: "production" | "sandbox";
+  token: string;
+  organizationId: string;
+  productId: string;
+}
+```
+
+#### `ValidateLicenseKeyResult`
+
+```typescript
+interface ValidateLicenseKeyResult {
+  valid: boolean;
+  code: string;
+  message: string;
+}
+```
+
+#### `Event`
+
+```typescript
+interface Event {
+  name: string;
+  metadata: Record<string, string | number>;
+}
+```
+
+## Troubleshooting
+
+### "Failed to get meter ID"
+
+Meter credit benefit not configured:
+- Verify product has meter credit benefit
+- Check benefit type is `meter_credit`
+- Ensure meter is active
+
+### "No granted meter benefit found"
+
+Customer hasn't purchased meter credits:
+- Customer needs to purchase product
+- Check customer has active subscription/license
+- Verify benefit is granted to customer
+
+### "Usage meter credit exhausted"
+
+Customer has used all credits:
+- Customer needs to purchase more credits
+- Check meter balance in Polar dashboard
+- Event ingestion is working (credits are decremented)
+
+### "License key not granted"
+
+License key status is not active:
+- Verify license key is valid
+- Check license hasn't been revoked
+- Ensure product is active
+
+## Learn More
+
+- [Polar Documentation](https://docs.polar.sh)
+- [Polar Meter Credits](https://docs.polar.sh/features/meter-credits)
+- [Polar License Keys](https://docs.polar.sh/features/license-keys)
+- [Polar Checkout](https://docs.polar.sh/features/checkout)

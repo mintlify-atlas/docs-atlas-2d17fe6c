@@ -1,0 +1,139 @@
+---
+title: "Introduction"
+description: "The TypeScript MCP Framework"
+---
+
+<div align="center">
+  <img src="https://assets.basehub.com/bf7c3bb1/303b8a62053c9d86ca3b972b5597ab5c/x.png" alt="xmcp logo" height="128" />
+</div>
+
+## The TypeScript MCP Framework
+
+xmcp is a framework for building and shipping MCP servers with TypeScript. Designed with DX in mind, it streamlines development and lowers the barrier to entry for anyone looking to create and deploy powerful tools on top of the Model Context Protocol ecosystem.
+
+## Get started
+
+<CardGroup cols={3}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Build your first xmcp app in minutes
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Set up xmcp in your project
+  </Card>
+  <Card
+    title="Core Concepts"
+    icon="book"
+    href="/core-concepts/architecture"
+  >
+    Learn the fundamental concepts
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### File System Routing
+
+Tools and prompts are auto-registered from a `tools` and `prompts` directory. Simply create a file, export your tool or prompt, and xmcp handles the rest.
+
+```typescript
+// src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+};
+
+export default function greet({ name }: InferSchema<typeof schema>) {
+  return `Hello, ${name}!`;
+}
+```
+
+### Hot Reloading
+
+Get instant development feedback with hot reloading. Changes to your tools and prompts are reflected immediately without restarting the server.
+
+### Middlewares
+
+Toolkit for shipping authentication and custom middlewares. Add API key authentication, logging, rate limiting, and more with a simple middleware system.
+
+### Extensible Configuration
+
+Customizable configuration for your MCP server through `xmcp.config.ts`. Configure your server name, version, transport options, and more.
+
+### Deploy Anywhere
+
+Flexible deployment across any platform. Deploy to Vercel, Express, Next.js, NestJS, or any Node.js environment.
+
+### Vercel Support
+
+Zero-configuration deployment with Vercel. Built-in adapter makes it easy to deploy your MCP server to Vercel with no additional setup.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Build your first app"
+    icon="hammer"
+    href="/quickstart"
+  >
+    Follow the quickstart guide to create your first xmcp application
+  </Card>
+  <Card
+    title="Explore examples"
+    icon="code"
+    href="https://github.com/basementstudio/xmcp/tree/main/examples"
+  >
+    Check out example projects on GitHub
+  </Card>
+  <Card
+    title="Learn the concepts"
+    icon="graduation-cap"
+    href="/core-concepts/architecture"
+  >
+    Understand how xmcp works under the hood
+  </Card>
+  <Card
+    title="API Reference"
+    icon="book-open"
+    href="/api/types/tool"
+  >
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
+
+## Community
+
+<CardGroup cols={2}>
+  <Card
+    title="GitHub"
+    icon="github"
+    href="https://github.com/basementstudio/xmcp"
+  >
+    Star the repository and contribute
+  </Card>
+  <Card
+    title="Documentation"
+    icon="file-lines"
+    href="https://xmcp.dev/docs"
+  >
+    Visit the full documentation site
+  </Card>
+</CardGroup>
+
+<Note>
+  **Need help?** Report issues or request features on [GitHub](https://github.com/basementstudio/xmcp/issues).
+</Note>

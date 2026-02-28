@@ -1,0 +1,65 @@
+---
+title: 'xmcp dev'
+description: 'Start development mode with hot reload'
+icon: 'code'
+---
+
+Start the xmcp development server with hot module reloading.
+
+## Usage
+
+```bash
+xmcp dev [options]
+```
+
+## Options
+
+<ParamField path="--cf" type="boolean">
+  Enable Cloudflare Workers output in development mode. When set, the compiler will prepare artifacts compatible with Cloudflare Workers runtime.
+  
+  This option can also be triggered by setting the `CF_PAGES` environment variable to `"1"`.
+</ParamField>
+
+## Examples
+
+Start development server:
+
+```bash
+xmcp dev
+```
+
+Start development server with Cloudflare Workers support:
+
+```bash
+xmcp dev --cf
+```
+
+Using environment variable:
+
+```bash
+CF_PAGES=1 xmcp dev
+```
+
+## How it works
+
+The dev command:
+
+1. Initializes the compiler context in development mode
+2. Watches for file changes in your source directory
+3. Automatically recompiles when files are modified
+4. Enables platform-specific features when flags are set
+
+<Info>
+  Development mode enables fast refresh and detailed error reporting to help you iterate quickly.
+</Info>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="build" icon="hammer" href="/api/cli/build">
+    Build for production
+  </Card>
+  <Card title="create" icon="plus" href="/api/cli/create">
+    Scaffold new components
+  </Card>
+</CardGroup>

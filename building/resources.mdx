@@ -1,0 +1,372 @@
+---
+title: Building Resources
+description: Learn how to build MCP resources in xmcp
+---
+
+## What are Resources?
+
+Resources are contextual data sources in MCP that AI models can read to gather information. Unlike tools (which perform actions) and prompts (which generate text), resources provide static or dynamic data like configuration, user profiles, or application state.
+
+In xmcp, resources use **file-system routing** where the file path determines the resource URI.
+
+## File-System Routing
+
+Resources are automatically registered based on their location in the `src/resources/` directory:
+
+```
+src/resources/
+├── (config)/
+│   └── app.ts              → resource://app-config
+└── (users)/
+    └── [userId]/
+        └── profile.ts      → resource://user-profile/{userId}
+```
+
+### Routing Rules
+
+<AccordionGroup>
+  <Accordion title="Static Routes" icon="file">
+    Files without dynamic segments create static resource URIs:
+    
+    - `src/resources/(config)/app.ts` → `resource://app-config`
+    - `src/resources/(data)/settings.ts` → `resource://settings`
+  </Accordion>
+
+  <Accordion title="Dynamic Routes" icon="brackets-curly">
+    Files with `[param]` segments create parameterized resources:
+    
+    - `src/resources/(users)/[userId]/profile.ts` → `resource://user-profile/{userId}`
+    - `src/resources/(posts)/[postId]/comments.ts` → `resource://comments/{postId}`
+  </Accordion>
+
+  <Accordion title="Route Groups" icon="folder">
+    Directories wrapped in parentheses `(name)` are omitted from the URI:
+    
+    - `(config)` groups configuration resources but doesn't appear in the URI
+    - `(users)` organizes user-related resources without affecting the URI
+  </Accordion>
+</AccordionGroup>
+
+## Resource Structure
+
+Every resource consists of two main exports:
+
+### 1. Metadata Export
+
+The `metadata` export defines the resource's identity:
+
+```typescript
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "app-config",
+  title: "Application Config",
+  description: "Application configuration data",
+};
+```
+
+#### ResourceMetadata Type
+
+The `ResourceMetadata` interface from `~/workspace/source/packages/xmcp/src/types/resource.ts:3-15` includes:
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the resource (must match the URI pattern)
+</ParamField>
+
+<ParamField path="title" type="string">
+  Human-readable title for the resource
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description of what the resource provides
+</ParamField>
+
+<ParamField path="mimeType" type="string">
+  MIME type of the resource content (e.g., `"application/json"`, `"text/plain"`, `"text/html+skybridge"`)
+</ParamField>
+
+<ParamField path="size" type="number">
+  Size of the resource in bytes
+</ParamField>
+
+<ParamField path="_meta" type="object">
+  Metadata for the resource. Supports nested OpenAI metadata and other vendor extensions:
+  
+  ```typescript
+  _meta: {
+    openai?: OpenAIMetadata;
+    [key: string]: unknown;
+  }
+  ```
+</ParamField>
+
+### 2. Default Export (Handler)
+
+The default export is the function that returns the resource data:
+
+```typescript
+export default function handler() {
+  return "App configuration here";
+}
+```
+
+## Real Examples
+
+### Static Resource: App Config
+
+From `~/workspace/source/examples/http-transport/src/resources/(config)/app.ts:1-12`:
+
+```typescript
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "app-config",
+  title: "Application Config",
+  description: "Application configuration data",
+};
+
+export default function handler() {
+  return "App configuration here";
+}
+```
+
+**File location:** `src/resources/(config)/app.ts`  
+**Resource URI:** `resource://app-config`
+
+### Dynamic Resource: User Profile
+
+From `~/workspace/source/examples/stdio-transport/src/resources/(users)/[userId]/profile.ts:1-17`:
+
+```typescript
+import { z } from "zod";
+import { type ResourceMetadata, type InferSchema } from "xmcp";
+
+export const schema = {
+  userId: z.string().describe("The ID of the user"),
+};
+
+export const metadata: ResourceMetadata = {
+  name: "user-profile",
+  title: "User Profile",
+  description: "User profile information",
+};
+
+export default function handler({ userId }: InferSchema<typeof schema>) {
+  return `Profile data for user ${userId}`;
+}
+```
+
+**File location:** `src/resources/(users)/[userId]/profile.ts`  
+**Resource URI:** `resource://user-profile/{userId}`
+
+<Info>
+Dynamic resources use a `schema` export (just like tools and prompts) to define the parameters extracted from the URI.
+</Info>
+
+### HTML Resource: Widget
+
+From `~/workspace/source/examples/open-ai/src/resources/(ui)/widget/pizza-map.ts:1-16`:
+
+```typescript
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "pizza-map",
+  title: "Show Pizza Map",
+  mimeType: "text/html+skybridge",
+};
+
+export default async function handler() {
+  return `
+    <div id="pizzaz-root"></div>
+    <link rel="stylesheet" href="https://persistent.oaistatic.com/ecosystem-built-assets/pizzaz-0038.css">
+    <script type="module" src="https://persistent.oaistatic.com/ecosystem-built-assets/pizzaz-0038.js"></script>
+  `.trim();
+}
+```
+
+<Tip>
+Set `mimeType` to specify the content type. Use `"text/html+skybridge"` for OpenAI widgets.
+</Tip>
+
+## Creating Resources with CLI
+
+Use the xmcp CLI to quickly scaffold a new resource:
+
+```bash
+xmcp create resource my-resource
+```
+
+This creates a new resource file at `src/resources/my-resource.ts` with the basic structure:
+
+```typescript
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "my-resource",
+  title: "My Resource",
+  description: "TODO: Add description",
+};
+
+export default function myResource() {
+  // TODO: Implement your resource logic here
+  return "Resource data for my-resource";
+}
+```
+
+## Resource Patterns
+
+### Configuration Resources
+
+Store application settings and configuration:
+
+```typescript
+// src/resources/(config)/app.ts
+export const metadata: ResourceMetadata = {
+  name: "app-config",
+  title: "App Configuration",
+  description: "Application-wide configuration",
+};
+
+export default function handler() {
+  return JSON.stringify({
+    version: "1.0.0",
+    features: ["auth", "api", "ui"],
+    environment: process.env.NODE_ENV,
+  });
+}
+```
+
+### User Data Resources
+
+Provide user-specific data:
+
+```typescript
+// src/resources/(users)/[userId]/profile.ts
+export const schema = {
+  userId: z.string(),
+};
+
+export const metadata: ResourceMetadata = {
+  name: "user-profile",
+  title: "User Profile",
+  description: "User profile data",
+};
+
+export default async function handler({ userId }: InferSchema<typeof schema>) {
+  const user = await fetchUser(userId);
+  return JSON.stringify(user);
+}
+```
+
+### Documentation Resources
+
+Provide contextual documentation:
+
+```typescript
+// src/resources/(docs)/api-reference.ts
+export const metadata: ResourceMetadata = {
+  name: "api-reference",
+  title: "API Reference",
+  description: "Complete API documentation",
+  mimeType: "text/markdown",
+};
+
+export default function handler() {
+  return `
+# API Reference
+
+## Authentication
+All requests require an API key...
+  `.trim();
+}
+```
+
+## Return Values
+
+Resources can return:
+
+1. **Strings** - Plain text or JSON strings
+2. **Objects** - Automatically serialized to JSON
+3. **Structured content** - MCP content format:
+   ```typescript
+   return {
+     content: [{ type: "text", text: "Resource data" }],
+   };
+   ```
+
+## Best Practices
+
+<Card title="Use Descriptive Names" icon="signature">
+  Choose clear names that describe the resource's content: `user-profile`, `app-config`, `api-docs`.
+</Card>
+
+<Card title="Set MIME Types" icon="file-code">
+  Specify `mimeType` for non-text resources:
+  - `"application/json"` for JSON data
+  - `"text/markdown"` for documentation
+  - `"text/html+skybridge"` for OpenAI widgets
+</Card>
+
+<Card title="Organize with Route Groups" icon="folder-tree">
+  Use parentheses to group related resources:
+  - `(config)/` for configuration
+  - `(users)/` for user data
+  - `(docs)/` for documentation
+</Card>
+
+<Card title="Handle Async Data" icon="clock">
+  Resources can be async to fetch data from databases or APIs:
+  ```typescript
+  export default async function handler() {
+    const data = await fetchData();
+    return JSON.stringify(data);
+  }
+  ```
+</Card>
+
+<Card title="Validate Dynamic Parameters" icon="shield-check">
+  Use Zod schemas to validate URI parameters:
+  ```typescript
+  export const schema = {
+    userId: z.string().uuid(),
+  };
+  ```
+</Card>
+
+## Resources vs Tools vs Prompts
+
+<CardGroup cols={3}>
+  <Card title="Resources" icon="folder">
+    **Provide data**
+    
+    Read-only contextual information that models can reference.
+    
+    Example: User profiles, configuration, documentation
+  </Card>
+  <Card title="Tools" icon="wrench">
+    **Perform actions**
+    
+    Executable functions that models can call to accomplish tasks.
+    
+    Example: Create user, send email, fetch data
+  </Card>
+  <Card title="Prompts" icon="message">
+    **Generate text**
+    
+    Reusable templates that help models generate consistent responses.
+    
+    Example: Code review, documentation generation
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building Tools" icon="wrench" href="/building/tools">
+    Learn how to create executable tools
+  </Card>
+  <Card title="Building Widgets" icon="window" href="/building/widgets">
+    Create React components for OpenAI-compatible UIs
+  </Card>
+</CardGroup>

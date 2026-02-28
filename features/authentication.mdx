@@ -1,0 +1,319 @@
+---
+title: Authentication
+description: Secure your MCP server with built-in authentication middleware for API keys and JWT tokens
+---
+
+## Overview
+
+xmcp provides built-in authentication middleware to secure your MCP server. Choose from API key authentication for simple scenarios or JWT authentication for token-based auth flows.
+
+```typescript packages/xmcp/src/index.ts
+export { apiKeyAuthMiddleware } from "./auth/api-key";
+export { jwtAuthMiddleware } from "./auth/jwt";
+```
+
+## API Key Authentication
+
+Validate requests using API keys from custom headers.
+
+### Static API Key
+
+Validate against a single static API key:
+
+```typescript examples/middlewares-api-key/src/middleware.ts
+import { apiKeyAuthMiddleware } from "xmcp";
+
+export default apiKeyAuthMiddleware({
+  headerName: "x-api-key",
+  validateApiKey: async (apiKey) => {
+    return apiKey === process.env.API_KEY!;
+  },
+  // or `apiKey: process.env.API_KEY` To set a static key
+});
+```
+
+### Custom Validation
+
+Implement custom validation logic (e.g., database lookup):
+
+```typescript
+import { apiKeyAuthMiddleware } from "xmcp";
+
+export default apiKeyAuthMiddleware({
+  headerName: "x-api-key",
+  validateApiKey: async (apiKey) => {
+    // Query your database or external service
+    const user = await db.users.findByApiKey(apiKey);
+    return user !== null;
+  },
+});
+```
+
+### Configuration Options
+
+<ParamField path="apiKey" type="string">
+  Static API key to validate against (mutually exclusive with `validateApiKey`)
+</ParamField>
+
+<ParamField path="validateApiKey" type="(key: string) => Promise<boolean>">
+  Custom async function to validate the API key (mutually exclusive with `apiKey`)
+</ParamField>
+
+<ParamField path="headerName" type="string" default="x-api-key">
+  HTTP header name to read the API key from
+</ParamField>
+
+### Implementation Details
+
+The middleware validates requests as follows:
+
+```typescript packages/xmcp/src/auth/api-key.ts
+export function apiKeyAuthMiddleware(
+  config: StaticApiKeyConfig | CustomValidationConfig
+): RequestHandler {
+  const headerName = config.headerName ?? "x-api-key";
+  const apiKey = "apiKey" in config ? config.apiKey : undefined;
+  const validateApiKey =
+    "validateApiKey" in config ? config.validateApiKey : undefined;
+
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const apiKeyHeader = req.header(headerName);
+    if (!apiKeyHeader) {
+      res.status(401).json({ error: errorMessage });
+      return;
+    }
+    if ("apiKey" in config && apiKeyHeader !== apiKey) {
+      res.status(401).json({ error: errorMessage });
+      return;
+    }
+    if (validateApiKey) {
+      const isValid = await validateApiKey(apiKeyHeader);
+      if (!isValid) {
+        res.status(401).json({ error: errorMessage });
+        return;
+      }
+    }
+    next();
+  };
+}
+```
+
+## JWT Authentication
+
+Validate JWT tokens with full support for jsonwebtoken verify options.
+
+### Basic JWT Auth
+
+```typescript examples/middlewares-jwt/src/middleware.ts
+import { jwtAuthMiddleware } from "xmcp";
+
+export default jwtAuthMiddleware({
+  secret: process.env.JWT_SECRET!,
+  algorithms: ["HS256"],
+});
+```
+
+### Advanced JWT Configuration
+
+Use all jsonwebtoken verify options:
+
+```typescript
+import { jwtAuthMiddleware } from "xmcp";
+
+export default jwtAuthMiddleware({
+  secret: process.env.JWT_SECRET!,
+  algorithms: ["HS256"],
+  issuer: "https://example.com",
+  audience: "https://api.example.com",
+  subject: "user-id",
+  clockTolerance: 30,
+});
+```
+
+### Configuration Options
+
+<ParamField path="secret" type="string" required>
+  JWT secret key for token verification
+</ParamField>
+
+<ParamField path="algorithms" type="Algorithm[]">
+  Allowed signing algorithms (e.g., `["HS256"]`, `["RS256"]`)
+</ParamField>
+
+<ParamField path="issuer" type="string">
+  Expected token issuer
+</ParamField>
+
+<ParamField path="audience" type="string">
+  Expected token audience
+</ParamField>
+
+<ParamField path="subject" type="string">
+  Expected token subject
+</ParamField>
+
+<ParamField path="clockTolerance" type="number">
+  Clock tolerance in seconds for time-based validations
+</ParamField>
+
+### Implementation Details
+
+The JWT middleware extracts and verifies Bearer tokens:
+
+```typescript packages/xmcp/src/auth/jwt.ts
+export function jwtAuthMiddleware(
+  config: JWTAuthMiddlewareConfig
+): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      res.status(401).json({
+        error: "Unauthorized: Missing or malformed Authorization header",
+      });
+      return;
+    }
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) {
+      res.status(401).json({ error: "Unauthorized: Missing access token" });
+      return;
+    }
+    try {
+      const { secret, ...verifyOptions } = config;
+      const decoded = jwt.verify(token, secret, verifyOptions) as JwtPayload;
+      (req as any).user = decoded;
+      next();
+    } catch (err) {
+      res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
+    }
+  };
+}
+```
+
+The decoded JWT payload is attached to `req.user` for access in your tools.
+
+## Using Auth in Tools
+
+Access authentication information in your tool handlers.
+
+### Auth0 Example
+
+The auth0 provider example shows how to access user info:
+
+```typescript examples/auth0-http/src/tools/whoami.ts
+import type { ToolMetadata } from "xmcp";
+import { getAuthInfo } from "@xmcp-dev/auth0";
+
+export const metadata: ToolMetadata = {
+  name: "whoami",
+  description: "Returns the full Auth0 user session and account information",
+};
+
+export default function whoami(): string {
+  const authInfo = getAuthInfo();
+
+  const userInfo = {
+    user: {
+      id: authInfo.user.sub,
+      email: authInfo.user.email ?? "N/A",
+      name: authInfo.user.name ?? "N/A",
+      clientId: authInfo.clientId,
+    },
+    token: {
+      scopes: authInfo.scopes,
+      expiresAt: authInfo.expiresAt
+        ? new Date(authInfo.expiresAt * 1000).toISOString()
+        : "N/A",
+    },
+  };
+
+  return JSON.stringify(userInfo, null, 2);
+}
+```
+
+### Custom JWT Access
+
+Access the decoded JWT from the request object:
+
+```typescript
+import { InferSchema, type ToolMetadata } from "xmcp";
+import { z } from "zod";
+
+export const schema = {
+  message: z.string().describe("Message to log"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "log-message",
+  description: "Log a message with user context",
+};
+
+export default function handler(
+  { message }: InferSchema<typeof schema>,
+  { req }: any
+) {
+  // Access the decoded JWT
+  const user = req.user;
+  console.log(`User ${user.sub}: ${message}`);
+  return `Logged message for user ${user.sub}`;
+}
+```
+
+## Auth Providers
+
+For OAuth and OpenID Connect flows, use community auth providers:
+
+```typescript examples/auth0-http/src/middleware.ts
+import { auth0Provider } from "@xmcp-dev/auth0";
+
+export default auth0Provider({
+  domain: process.env.DOMAIN!,
+  audience: process.env.AUDIENCE!,
+  baseURL: process.env.BASE_URL!,
+  clientId: process.env.CLIENT_ID!,
+  clientSecret: process.env.CLIENT_SECRET!,
+});
+```
+
+<Tip>
+The `@xmcp-dev/auth0` package provides a complete Auth0 integration with OAuth flows and user session management.
+</Tip>
+
+## Error Responses
+
+All built-in auth middleware returns consistent error responses:
+
+```json
+{
+  "error": "Unauthorized: Missing or invalid API key"
+}
+```
+
+HTTP status code: `401 Unauthorized`
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Environment Variables" icon="lock">
+    Never hardcode secrets. Always use `process.env` for API keys and JWT secrets
+  </Card>
+  <Card title="Validate in Production" icon="shield-check">
+    Use custom validation functions to check against databases or external services
+  </Card>
+  <Card title="Set Clock Tolerance" icon="clock">
+    For JWT, set `clockTolerance` to handle clock skew between servers
+  </Card>
+  <Card title="Combine Middleware" icon="layer-group">
+    Use middleware arrays to combine auth with logging, rate limiting, etc.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Middleware" icon="filter" href="/features/middleware">
+    Learn more about middleware architecture
+  </Card>
+  <Card title="Transports" icon="server" href="/features/transports">
+    Configure HTTP and STDIO transports
+  </Card>
+</CardGroup>

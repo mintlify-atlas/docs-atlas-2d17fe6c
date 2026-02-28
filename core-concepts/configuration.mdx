@@ -1,0 +1,702 @@
+---
+title: 'Configuration'
+description: 'Configure your xmcp server with xmcp.config.ts - transports, paths, adapters, and bundler options'
+---
+
+## Configuration File
+
+xmcp is configured via `xmcp.config.ts` (or `xmcp.config.json`) in your project root:
+
+```typescript
+// xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+export default {
+  http: {
+    port: 3001,
+    endpoint: "/mcp",
+  },
+  stdio: true,
+  paths: {
+    tools: "src/tools",
+    prompts: "src/prompts",
+    resources: "src/resources",
+  },
+} satisfies XmcpConfig;
+```
+
+## Configuration Schema
+
+The full configuration type from `packages/xmcp/src/compiler/config/index.ts:16-24`:
+
+```typescript
+export const configSchema = z.object({
+  stdio: stdioTransportConfigSchema.optional(),
+  http: httpTransportConfigSchema.optional(),
+  experimental: experimentalConfigSchema.optional(),
+  paths: pathsConfigSchema.optional(),
+  bundler: bundlerConfigSchema.optional(),
+  template: templateConfigSchema.optional(),
+  typescript: typescriptConfigSchema.optional(),
+});
+```
+
+## HTTP Transport
+
+Configure the HTTP/SSE transport for web-based integrations.
+
+### Basic Configuration
+
+```typescript
+export default {
+  http: true, // Enable with defaults
+};
+```
+
+### Advanced Configuration
+
+```typescript
+export default {
+  http: {
+    port: 3001,                      // Server port (default: 3001)
+    host: "127.0.0.1",               // Bind host (default: "127.0.0.1")
+    endpoint: "/mcp",                // API endpoint (default: "/mcp")
+    bodySizeLimit: 1024 * 1024 * 10, // 10MB (default: 10MB)
+    debug: false,                    // Enable debug logs (default: false)
+    cors: {
+      origin: "*",                   // Allowed origins (default: "*")
+      methods: ["GET", "POST"],      // Allowed methods (default: ["GET", "POST"])
+      allowedHeaders: [              // Allowed headers
+        "Content-Type",
+        "Authorization",
+        "mcp-session-id",
+        "mcp-protocol-version",
+      ],
+      exposedHeaders: [              // Exposed headers
+        "Content-Type",
+        "Authorization",
+        "mcp-session-id",
+      ],
+      credentials: false,            // Allow credentials (default: false)
+      maxAge: 86400,                 // Preflight cache (default: 86400)
+    },
+  },
+};
+```
+
+### HTTP Schema
+
+From `packages/xmcp/src/compiler/config/schemas/transport/http.ts:60-85`:
+
+```typescript
+const httpTransportObjectBaseSchema = z.object({
+  port: z.number().default(3001),
+  host: z.string().default("127.0.0.1"),
+  bodySizeLimit: z.number().default(1024 * 1024 * 10), // 10MB
+  debug: z.boolean().default(false),
+  endpoint: z.string().default("/mcp"),
+  cors: corsConfigSchema,
+});
+
+export const httpTransportConfigSchema = z.union([
+  z.boolean(),
+  httpTransportObjectSchema,
+]);
+```
+
+### CORS Configuration
+
+```typescript
+export default {
+  http: {
+    cors: {
+      origin: ["https://app.example.com", "https://admin.example.com"],
+      methods: ["POST"],
+      credentials: true,
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "X-Custom-Header",
+      ],
+    },
+  },
+};
+```
+
+<Note>
+  The headers `mcp-session-id` and `mcp-protocol-version` are always added to `allowedHeaders` and `exposedHeaders` automatically.
+</Note>
+
+### Disable HTTP
+
+```typescript
+export default {
+  http: false, // HTTP transport disabled
+  stdio: true, // Only stdio transport
+};
+```
+
+## stdio Transport
+
+Configure the stdio transport for CLI-based integrations (Claude Desktop, Cursor, etc.).
+
+### Basic Configuration
+
+```typescript
+export default {
+  stdio: true, // Enable with defaults
+};
+```
+
+### Advanced Configuration
+
+```typescript
+export default {
+  stdio: {
+    debug: true, // Enable debug logs to stderr (default: false)
+  },
+};
+```
+
+### stdio Schema
+
+From `packages/xmcp/src/compiler/config/schemas/transport/stdio.ts:7-24`:
+
+```typescript
+const stdioTransportObjectBaseSchema = z.object({
+  debug: z.boolean().default(false),
+});
+
+export const stdioTransportConfigSchema = z
+  .union([z.boolean(), stdioTransportObjectSchema])
+  .optional();
+```
+
+### Disable stdio
+
+```typescript
+export default {
+  http: true,
+  stdio: false, // stdio transport disabled
+};
+```
+
+<Warning>
+  stdio is automatically disabled on Vercel and Cloudflare Workers platforms as they don't support stdin/stdout.
+</Warning>
+
+## Paths Configuration
+
+Customize where xmcp looks for tools, prompts, and resources.
+
+### Default Paths
+
+```typescript
+export default {
+  paths: {
+    tools: "src/tools",       // Default
+    prompts: "src/prompts",   // Default
+    resources: "src/resources", // Default
+  },
+};
+```
+
+### Custom Paths
+
+```typescript
+export default {
+  paths: {
+    tools: "src/my-tools",
+    prompts: "lib/prompts",
+    resources: "app/resources",
+  },
+};
+```
+
+### Disable Specific Paths
+
+```typescript
+export default {
+  paths: {
+    tools: "src/tools",
+    prompts: false,    // No prompts
+    resources: false,  // No resources
+  },
+};
+```
+
+### Paths Schema
+
+From `packages/xmcp/src/compiler/config/schemas/paths.ts:7-26`:
+
+```typescript
+const pathsConfigBaseSchema = z.object({
+  tools: z.union([z.boolean(), z.string()]).default(true),
+  prompts: z.union([z.boolean(), z.string()]).default(true),
+  resources: z.union([z.boolean(), z.string()]).default(true),
+});
+
+export const DEFAULT_PATHS = {
+  tools: "src/tools",
+  prompts: "src/prompts",
+  resources: "src/resources",
+} as const;
+```
+
+<Note>
+  When set to `true`, the default paths are used. When set to a string, that custom path is used. When set to `false`, that category is disabled.
+</Note>
+
+## Experimental Features
+
+Experimental features are opt-in and may change in future versions.
+
+### Adapters
+
+Enable framework adapters to integrate xmcp into existing applications.
+
+#### Next.js Adapter
+
+```typescript
+// xmcp.config.ts
+export default {
+  http: true,
+  experimental: {
+    adapter: "nextjs",
+  },
+};
+```
+
+```typescript
+// app/api/mcp/route.ts
+import { xmcpHandler } from "xmcp/adapters/nextjs";
+
+export const POST = xmcpHandler;
+```
+
+#### Express Adapter
+
+```typescript
+// xmcp.config.ts
+export default {
+  experimental: {
+    adapter: "express",
+  },
+};
+```
+
+```typescript
+// server.ts
+import express from "express";
+import { xmcpHandler } from "xmcp/adapters/express";
+
+const app = express();
+app.use(express.json());
+app.post("/mcp", xmcpHandler);
+app.listen(3000);
+```
+
+#### NestJS Adapter
+
+```typescript
+// xmcp.config.ts
+export default {
+  experimental: {
+    adapter: "nestjs",
+  },
+};
+```
+
+```typescript
+// app.module.ts
+import { Module } from "@nestjs/common";
+import { XmcpModule } from "xmcp/adapters/nestjs";
+
+@Module({
+  imports: [XmcpModule],
+})
+export class AppModule {}
+```
+
+### Experimental Schema
+
+From `packages/xmcp/src/compiler/config/schemas/experimental/index.ts:6-17`:
+
+```typescript
+export const adapterConfigSchema = z.enum(["express", "nextjs", "nestjs"]);
+
+export type AdapterConfig = z.infer<typeof adapterConfigSchema>;
+
+export const experimentalConfigSchema = z.object({
+  adapter: adapterConfigSchema.optional(),
+});
+```
+
+## Bundler Configuration
+
+Customize the Rspack bundler configuration.
+
+### Custom Bundler Rules
+
+```typescript
+import { XmcpConfig } from "xmcp";
+
+export default {
+  bundler: (config) => {
+    // Add custom loader for images
+    config.module?.rules?.push({
+      test: /\.(png|jpe?g|gif|svg|webp)$/i,
+      type: "asset/inline",
+    });
+
+    return config;
+  },
+} satisfies XmcpConfig;
+```
+
+### Add Custom Alias
+
+```typescript
+export default {
+  bundler: (config) => {
+    config.resolve = {
+      ...config.resolve,
+      alias: {
+        ...config.resolve?.alias,
+        "@utils": "./src/utils",
+        "@lib": "./src/lib",
+      },
+    };
+
+    return config;
+  },
+};
+```
+
+### Add Custom Plugin
+
+```typescript
+import { SomeRspackPlugin } from "some-rspack-plugin";
+
+export default {
+  bundler: (config) => {
+    config.plugins = [
+      ...(config.plugins || []),
+      new SomeRspackPlugin({ option: "value" }),
+    ];
+
+    return config;
+  },
+};
+```
+
+### Modify External Packages
+
+```typescript
+export default {
+  bundler: (config) => {
+    // Don't bundle certain packages
+    config.externals = {
+      ...config.externals,
+      "@aws-sdk/client-s3": "commonjs2 @aws-sdk/client-s3",
+      "sharp": "commonjs2 sharp",
+    };
+
+    return config;
+  },
+};
+```
+
+## TypeScript Configuration
+
+Configure TypeScript type checking.
+
+### Skip Type Checking
+
+```typescript
+export default {
+  typescript: {
+    skipTypeCheck: true, // Skip type checking during build
+  },
+};
+```
+
+<Warning>
+  Skipping type checks speeds up builds but may hide type errors. Use this in development only.
+</Warning>
+
+## Real-World Examples
+
+### Example 1: HTTP-Only Server
+
+```typescript
+// xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+export default {
+  http: {
+    port: 3002,
+    endpoint: "/api/mcp",
+    cors: {
+      origin: ["https://app.example.com"],
+      credentials: true,
+    },
+  },
+  stdio: false,
+  typescript: {
+    skipTypeCheck: true,
+  },
+} satisfies XmcpConfig;
+```
+
+### Example 2: stdio-Only CLI Tool
+
+```typescript
+// xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+export default {
+  stdio: {
+    debug: true,
+  },
+  http: false,
+} satisfies XmcpConfig;
+```
+
+### Example 3: Custom Directory Structure
+
+```typescript
+// xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+export default {
+  http: true,
+  paths: {
+    tools: "src/my-tools",
+    prompts: false,
+    resources: false,
+  },
+} satisfies XmcpConfig;
+```
+
+**From example:** `examples/custom-paths/xmcp.config.ts`
+
+### Example 4: Next.js Integration
+
+```typescript
+// xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+export default {
+  http: true,
+  experimental: {
+    adapter: "nextjs",
+  },
+  paths: {
+    tools: "src/tools",
+    prompts: false,
+    resources: false,
+  },
+} satisfies XmcpConfig;
+```
+
+**From example:** `examples/with-nextjs/xmcp.config.ts`
+
+### Example 5: Custom Bundler Config
+
+```typescript
+// xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+export default {
+  http: {
+    port: 3002,
+  },
+  bundler: (config) => {
+    // Add raw loader for images to get them as base64
+    config.module?.rules?.push({
+      test: /\.(png|jpe?g|gif|svg|webp)$/i,
+      type: "asset/inline",
+    });
+
+    return config;
+  },
+} satisfies XmcpConfig;
+```
+
+**From example:** `examples/custom-bundler-config/xmcp.config.ts`
+
+### Example 6: Express Integration
+
+```typescript
+// xmcp.config.ts
+export default {
+  experimental: {
+    adapter: "express",
+  },
+};
+```
+
+```typescript
+// server.ts
+import express from "express";
+import { xmcpHandler } from "xmcp/adapters/express";
+
+const app = express();
+app.use(express.json());
+
+app.get("/", (req, res) => {
+  res.json({ message: "MCP Server" });
+});
+
+app.post("/mcp", xmcpHandler);
+
+app.listen(3000, () => {
+  console.log("Server running on http://localhost:3000");
+});
+```
+
+**From example:** `examples/with-express/`
+
+## Configuration Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use TypeScript config" icon="typescript">
+    Use `xmcp.config.ts` for type safety and auto-completion
+  </Card>
+
+  <Card title="Environment-specific configs" icon="code-branch">
+    Use environment variables for port, host, and other runtime config:
+    ```typescript
+    export default {
+      http: {
+        port: parseInt(process.env.PORT || "3001"),
+      },
+    };
+    ```
+  </Card>
+
+  <Card title="Enable both transports" icon="plug">
+    Support both HTTP and stdio for maximum compatibility:
+    ```typescript
+    export default {
+      http: true,
+      stdio: true,
+    };
+    ```
+  </Card>
+
+  <Card title="Secure CORS" icon="shield">
+    In production, specify exact origins instead of `"*"`:
+    ```typescript
+    export default {
+      http: {
+        cors: {
+          origin: ["https://app.example.com"],
+          credentials: true,
+        },
+      },
+    };
+    ```
+  </Card>
+</CardGroup>
+
+## Type Definitions
+
+Import types for full type safety:
+
+```typescript
+import {
+  XmcpConfig,
+  HttpTransportConfig,
+  StdioTransportConfig,
+  PathsConfig,
+  ExperimentalConfig,
+} from "xmcp";
+
+const config: XmcpConfig = {
+  http: {
+    port: 3001,
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+    },
+  },
+  stdio: true,
+  paths: {
+    tools: "src/tools",
+    prompts: "src/prompts",
+    resources: "src/resources",
+  },
+};
+
+export default config;
+```
+
+## Configuration Validation
+
+xmcp validates your configuration at build time using Zod schemas. If your config is invalid, you'll see clear error messages:
+
+```bash
+❌ Failed to compile xmcp.config.ts:
+Validation error at "http.port": Expected number, received string
+```
+
+## Loading Order
+
+xmcp looks for configuration in this order:
+
+1. `xmcp.config.ts` (TypeScript config)
+2. `xmcp.config.json` (JSON config)
+3. Default configuration (if no config file found)
+
+## Platform-Specific Behavior
+
+xmcp automatically adjusts configuration based on deployment platform:
+
+### Vercel
+
+```typescript
+// stdio is automatically disabled
+// http is automatically enabled
+const config = await getConfig();
+if (platforms.vercel) {
+  delete config.stdio;
+}
+```
+
+### Cloudflare Workers
+
+```typescript
+// stdio is automatically disabled
+// http is automatically enabled
+const config = await getConfig();
+if (platforms.cloudflare) {
+  delete config.stdio;
+  if (!config.http) {
+    config.http = true;
+  }
+}
+```
+
+From `packages/xmcp/src/compiler/parse-xmcp-config.ts:29-44`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Create your first tool" icon="wrench" href="/building/tools">
+    Learn how to create tools with schemas and metadata
+  </Card>
+
+  <Card title="Deploy to production" icon="rocket" href="/deployment/overview">
+    Deploy your xmcp server to various platforms
+  </Card>
+
+  <Card title="Framework adapters" icon="plug" href="/adapters/overview">
+    Integrate xmcp into Next.js, Express, or NestJS
+  </Card>
+
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Secure your MCP server with authentication
+  </Card>
+</CardGroup>

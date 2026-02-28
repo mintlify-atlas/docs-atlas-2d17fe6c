@@ -1,0 +1,506 @@
+---
+title: Clerk Plugin
+description: Add modern authentication to your xmcp server with Clerk
+---
+
+The Clerk plugin provides modern authentication with organizations, role-based access control, and a beautiful developer experience.
+
+## Installation
+
+```bash
+npm install @xmcp-dev/clerk
+```
+
+## Features
+
+- OAuth 2.0 with Dynamic Client Registration (DCR)
+- Organizations with roles and permissions
+- JWT token verification
+- Access to Clerk SDK for user management
+- Automatic OAuth metadata endpoints
+- Session management
+
+## Setup
+
+### 1. Configure Clerk Application
+
+#### Get API Keys
+
+1. Navigate to [Clerk Dashboard](https://dashboard.clerk.com)
+2. Enter an existing application or create a new one
+3. Go to **Configure** → **API Keys** and copy:
+   - **Secret Key** (`sk_...`)
+   - **Frontend API** URL (`your-app.clerk.accounts.dev`)
+
+#### Enable Dynamic Client Registration
+
+1. In Clerk Dashboard, click **Development** (or **Production**)
+2. Go to **OAuth Applications**
+3. Enable **Dynamic Client Registration**
+
+### 2. Environment Variables
+
+Create a `.env` file:
+
+```bash
+# Clerk Configuration
+CLERK_SECRET_KEY=sk_test_...
+CLERK_DOMAIN=your-app.clerk.accounts.dev
+
+# Server Configuration
+BASE_URL=http://127.0.0.1:3001
+```
+
+<Note>
+Use `http://127.0.0.1:3001` for local development. In production, replace with your deployed server URL.
+</Note>
+
+### 3. Create Middleware
+
+Create `src/middleware.ts`:
+
+```typescript
+import { clerkProvider } from "@xmcp-dev/clerk";
+
+export default clerkProvider({
+  secretKey: process.env.CLERK_SECRET_KEY!,
+  clerkDomain: process.env.CLERK_DOMAIN!,
+  baseURL: process.env.BASE_URL!,
+});
+```
+
+### 4. Configure xmcp
+
+In `xmcp.config.ts`, enable HTTP transport:
+
+```typescript
+import type { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+  paths: {
+    prompts: false,
+    resources: false,
+  },
+};
+
+export default config;
+```
+
+## Configuration
+
+### Required Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `secretKey` | `string` | Clerk Secret Key from dashboard (`sk_...`) |
+| `clerkDomain` | `string` | Clerk Frontend API domain (e.g., `your-app.clerk.accounts.dev`) |
+| `baseURL` | `string` | Base URL of your MCP server |
+
+### Optional Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `scopes` | `string[]` | `['profile', 'email']` | OAuth scopes to request |
+| `docsURL` | `string` | - | URL to your API documentation |
+
+## Usage in Tools
+
+### Access Session
+
+Get authenticated user's session:
+
+```typescript src/tools/whoami.ts
+import { getSession } from "@xmcp-dev/clerk";
+import type { ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "whoami",
+  description: "Get current user session",
+};
+
+export default function whoami() {
+  const session = getSession();
+  
+  return {
+    userId: session.userId,
+    sessionId: session.sessionId,
+    organizationId: session.organizationId,
+    organizationRole: session.organizationRole,
+    organizationPermissions: session.organizationPermissions,
+    expiresAt: session.expiresAt,
+    issuedAt: session.issuedAt,
+  };
+}
+```
+
+### Get Full User Profile
+
+Fetch complete user details from Clerk:
+
+```typescript src/tools/get-user-info.ts
+import { getSession, getUser } from "@xmcp-dev/clerk";
+import type { ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "get-user-info",
+  description: "Get user details",
+};
+
+export default async function getUserInfo(): Promise<string> {
+  const session = getSession();
+  const user = await getUser();
+
+  const userInfo = {
+    userId: session.userId,
+    sessionId: session.sessionId,
+    organizationId: session.organizationId,
+    organizationRole: session.organizationRole,
+    email: user.emailAddresses[0]?.emailAddress,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    imageUrl: user.imageUrl,
+  };
+
+  return JSON.stringify(userInfo, null, 2);
+}
+```
+
+### Use in Tool Logic
+
+```typescript src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { getSession } from "@xmcp-dev/clerk";
+
+export const schema = {
+  name: z.string().describe("Name to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+};
+
+export default function greet({ name }: InferSchema<typeof schema>) {
+  const session = getSession();
+  return `Hello, ${name}! Your user ID is ${session.userId}`;
+}
+```
+
+### Access Clerk Client
+
+Use the Clerk SDK for advanced operations:
+
+```typescript
+import { getClient } from "@xmcp-dev/clerk";
+
+export default async function listUsers() {
+  const client = getClient();
+  
+  // Get user list
+  const users = await client.users.getUserList();
+  
+  return users.data;
+}
+```
+
+### Organization Access Control
+
+Check user's organization role and permissions:
+
+```typescript
+import { getSession } from "@xmcp-dev/clerk";
+
+export default function checkOrgAccess() {
+  const session = getSession();
+  
+  if (!session.organizationId) {
+    throw new Error("User is not part of an organization");
+  }
+  
+  if (session.organizationRole === "org:admin") {
+    // Admin-only logic
+    return "Admin access granted";
+  }
+  
+  if (session.organizationPermissions?.includes("org:manage_members")) {
+    // Permission-based logic
+    return "Can manage members";
+  }
+  
+  return "Basic access";
+}
+```
+
+## Session Type
+
+The `getSession()` function returns:
+
+```typescript
+interface Session {
+  userId: string;                           // Unique user identifier
+  sessionId: string | undefined;            // Current session ID
+  organizationId: string | undefined;       // Organization ID (if in org)
+  organizationRole: string | undefined;     // Role in organization
+  organizationPermissions: string[] | undefined; // Organization permissions
+  expiresAt: Date;                          // Token expiration time
+  issuedAt: Date;                           // Token issue time
+  claims: JWTClaims;                        // Raw JWT claims
+}
+```
+
+### JWT Claims
+
+```typescript
+interface JWTClaims {
+  sub: string;                  // User ID
+  sid?: string;                 // Session ID
+  org_id?: string;              // Organization ID
+  org_role?: string;            // Organization role
+  org_permissions?: string[];   // Organization permissions
+  azp?: string;                 // Authorized party (client ID)
+  iss: string;                  // Issuer (Clerk)
+  aud?: string | string[];      // Audience
+  exp: number;                  // Expiration timestamp
+  iat: number;                  // Issued at timestamp
+}
+```
+
+## OAuth Metadata Endpoints
+
+The plugin automatically exposes:
+
+### Resource Metadata
+
+```bash
+GET /.well-known/oauth-protected-resource
+```
+
+Returns:
+
+```json
+{
+  "resource": "http://localhost:3001",
+  "authorization_servers": ["https://your-app.clerk.accounts.dev"],
+  "bearer_methods_supported": ["header"],
+  "resource_documentation": "https://docs.example.com",
+  "scopes_supported": ["profile", "email"]
+}
+```
+
+### Authorization Server Metadata
+
+```bash
+GET /.well-known/oauth-authorization-server
+```
+
+Proxies Clerk's OpenID configuration from:
+```
+https://your-app.clerk.accounts.dev/.well-known/openid-configuration
+```
+
+## Example Project
+
+Complete example at [`examples/clerk-http`](https://github.com/basementstudio/xmcp/tree/main/examples/clerk-http):
+
+```typescript title="src/middleware.ts"
+import { clerkProvider } from "@xmcp-dev/clerk";
+
+export default clerkProvider({
+  secretKey: process.env.CLERK_SECRET_KEY!,
+  clerkDomain: process.env.CLERK_DOMAIN!,
+  baseURL: process.env.BASE_URL!,
+});
+```
+
+```typescript title="src/tools/get-user-info.ts"
+import type { ToolMetadata } from "xmcp";
+import { getSession, getUser } from "@xmcp-dev/clerk";
+
+export const metadata: ToolMetadata = {
+  name: "get-user-info",
+  description: "Get user details",
+};
+
+export default async function getUserInfo(): Promise<string> {
+  const session = getSession();
+  const user = await getUser();
+
+  const userInfo = {
+    userId: session.userId,
+    sessionId: session.sessionId,
+    organizationId: session.organizationId,
+    organizationRole: session.organizationRole,
+    email: user.emailAddresses[0]?.emailAddress,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    imageUrl: user.imageUrl,
+  };
+
+  return JSON.stringify(userInfo, null, 2);
+}
+```
+
+```typescript title="src/tools/whoami.ts"
+import type { ToolMetadata } from "xmcp";
+import { getSession } from "@xmcp-dev/clerk";
+
+export const metadata: ToolMetadata = {
+  name: "whoami",
+  description: "Get current user session",
+};
+
+export default function whoami() {
+  const session = getSession();
+  return `User ID: ${session.userId}, Session ID: ${session.sessionId}`;
+}
+```
+
+## Organizations
+
+### Setup Organizations in Clerk
+
+1. Go to Clerk Dashboard → **Organizations**
+2. Enable organizations for your application
+3. Configure roles and permissions
+
+### Check Organization Membership
+
+```typescript
+import { getSession } from "@xmcp-dev/clerk";
+
+export default function requireOrganization() {
+  const session = getSession();
+  
+  if (!session.organizationId) {
+    throw new Error("This tool requires organization membership");
+  }
+  
+  return `Organization: ${session.organizationId}`;
+}
+```
+
+### Role-Based Access
+
+```typescript
+import { getSession } from "@xmcp-dev/clerk";
+
+const ADMIN_ROLES = ["org:admin", "org:owner"];
+
+export default function adminOnlyTool() {
+  const session = getSession();
+  
+  if (!ADMIN_ROLES.includes(session.organizationRole || "")) {
+    throw new Error("Admin access required");
+  }
+  
+  return "Admin action completed";
+}
+```
+
+### Permission-Based Access
+
+```typescript
+import { getSession } from "@xmcp-dev/clerk";
+
+export default function permissionGatedTool() {
+  const session = getSession();
+  
+  const hasPermission = session.organizationPermissions?.includes(
+    "org:manage_billing"
+  );
+  
+  if (!hasPermission) {
+    throw new Error("org:manage_billing permission required");
+  }
+  
+  return "Billing action completed";
+}
+```
+
+## Troubleshooting
+
+### "Missing or invalid bearer token"
+
+The MCP client isn't sending an access token:
+- Verify Dynamic Client Registration is enabled in Clerk
+- Check the client completed the OAuth flow
+- Ensure `clerkDomain` is correct
+
+### "Token has expired"
+
+Access tokens are short-lived. The client should automatically refresh:
+- Disconnect and reconnect in the MCP client
+- Check system clock is accurate
+- Verify refresh token flow is working
+
+### "Token verification failed"
+
+- Verify `CLERK_SECRET_KEY` is correct
+- Check `CLERK_DOMAIN` matches your Clerk application's Frontend API
+- Ensure you're using the correct environment (development vs production)
+- Verify JWKS endpoint is accessible
+
+### "config_error" in token verification
+
+Configuration issue with Clerk:
+- Check all required environment variables are set
+- Verify `CLERK_SECRET_KEY` format is correct (`sk_...`)
+- Ensure `CLERK_DOMAIN` doesn't include `https://`
+
+## API Reference
+
+### Functions
+
+#### `clerkProvider(config: config): Middleware`
+
+Creates Clerk authentication middleware.
+
+#### `getSession(): Session`
+
+Returns current authenticated user's session. Must be called within a request context.
+
+#### `getUser(): Promise<User>`
+
+Fetches full user profile from Clerk API. Returns Clerk User object.
+
+#### `getClient(): ClerkClient`
+
+Returns Clerk SDK client instance for advanced operations.
+
+### Types
+
+#### `config`
+
+```typescript
+interface config {
+  readonly secretKey: string;
+  readonly clerkDomain: string;
+  readonly baseURL: string;
+  readonly scopes?: string[];
+  readonly docsURL?: string;
+}
+```
+
+#### `Session`
+
+```typescript
+interface Session {
+  readonly userId: string;
+  readonly sessionId: string | undefined;
+  readonly organizationId: string | undefined;
+  readonly organizationRole: string | undefined;
+  readonly organizationPermissions: string[] | undefined;
+  readonly expiresAt: Date;
+  readonly issuedAt: Date;
+  readonly claims: JWTClaims;
+}
+```
+
+## Learn More
+
+- [Clerk Documentation](https://clerk.com/docs)
+- [Clerk Organizations](https://clerk.com/docs/organizations/overview)
+- [Clerk RBAC](https://clerk.com/docs/organizations/roles-permissions)
+- [MCP OAuth Specification](https://spec.modelcontextprotocol.io/specification/2024-11-05/authentication/oauth/)

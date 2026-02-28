@@ -1,0 +1,539 @@
+---
+title: 'File-System Routing'
+description: 'Learn how xmcp uses file-system routing to automatically discover and register tools, prompts, and resources'
+---
+
+## Overview
+
+xmcp uses **file-system routing** to automatically discover and register your MCP primitives (tools, prompts, resources). This is similar to how Next.js uses the file system for page routing.
+
+## Directory Structure
+
+By default, xmcp looks for three directories:
+
+```
+src/
+├── tools/          # Executable functions for AI agents
+├── prompts/        # Reusable prompt templates
+└── resources/      # Data sources (files, APIs, databases)
+```
+
+Each file exports a handler function, optional schema, and metadata.
+
+## Tools Directory
+
+### Basic Tool
+
+Create a file in `src/tools/` to define a tool:
+
+```typescript
+// src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user by name",
+  annotations: {
+    title: "Greet User",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  return {
+    content: [{ type: "text", text: `Hello, ${name}!` }],
+  };
+}
+```
+
+**Result**: Tool is automatically registered as `greet` and available via MCP.
+
+### Nested Tools
+
+Organize tools in subdirectories:
+
+```
+src/tools/
+├── greet.ts
+├── users/
+│   ├── create.ts
+│   ├── update.ts
+│   └── delete.ts
+└── database/
+    ├── query.ts
+    └── backup.ts
+```
+
+Each file becomes a tool with its path encoded in the name:
+
+- `src/tools/users/create.ts` → `users_create`
+- `src/tools/database/query.ts` → `database_query`
+
+From `packages/xmcp/src/runtime/utils/path-to-tool-name.ts:4-22`:
+
+```typescript
+function normalizeAndGetBaseName(path: string): {
+  normalizedPath: string;
+  baseName: string;
+} {
+  // Normalize path (handle both / and \ separators)
+  const normalizedPath = path.replace(/\\/g, "/");
+
+  // Remove file extension
+  const withoutExtension = normalizedPath.replace(/\.[^/.]+$/, "");
+
+  // Replace / with _
+  const baseName = withoutExtension.replace(/\//g, "_");
+
+  return { normalizedPath, baseName };
+}
+```
+
+## Route Parameters
+
+Use square brackets `[paramName]` to create dynamic routes:
+
+```typescript
+// src/tools/users/[userId]/profile.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+export const schema = {
+  userId: z.string().describe("The ID of the user"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "get-user-profile",
+  description: "Get user profile by ID",
+};
+
+export default async function handler({ userId }: InferSchema<typeof schema>) {
+  // Fetch user from database
+  const user = await db.users.findById(userId);
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify(user, null, 2),
+      },
+    ],
+  };
+}
+```
+
+**Result**: Tool registered as `users_[userId]_profile`
+
+### Multiple Parameters
+
+You can have multiple parameters in a path:
+
+```typescript
+// src/tools/projects/[projectId]/tasks/[taskId].ts
+export const schema = {
+  projectId: z.string().describe("Project ID"),
+  taskId: z.string().describe("Task ID"),
+};
+
+export default async function handler({ projectId, taskId }) {
+  const task = await db.tasks.findOne({ projectId, taskId });
+  return {
+    content: [{ type: "text", text: JSON.stringify(task) }],
+  };
+}
+```
+
+**Result**: Tool registered as `projects_[projectId]_tasks_[taskId]`
+
+## Route Groups
+
+Use parentheses `(groupName)` to organize files without affecting the route name:
+
+```
+src/resources/
+├── (config)/
+│   ├── app.ts          → resource: "app-config"
+│   └── database.ts     → resource: "database-config"
+└── (users)/
+    ├── [userId]/
+    │   └── profile.ts  → resource: "user-profile"
+    └── list.ts         → resource: "users-list"
+```
+
+Route groups are **ignored** in the final name - they exist only for organization.
+
+### Example: Config Resources
+
+```typescript
+// src/resources/(config)/app.ts
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "app-config",
+  title: "Application Config",
+  description: "Application configuration data",
+};
+
+export default function handler() {
+  return JSON.stringify({
+    name: process.env.APP_NAME,
+    version: process.env.APP_VERSION,
+    env: process.env.NODE_ENV,
+  });
+}
+```
+
+**Result**: Resource registered as `app-config` (the `(config)` group is not included)
+
+### Example: User Resources with Parameters
+
+```typescript
+// src/resources/(users)/[userId]/profile.ts
+import { z } from "zod";
+import { type ResourceMetadata, type InferSchema } from "xmcp";
+
+export const schema = {
+  userId: z.string().describe("The ID of the user"),
+};
+
+export const metadata: ResourceMetadata = {
+  name: "user-profile",
+  title: "User Profile",
+  description: "User profile information",
+};
+
+export default function handler({ userId }: InferSchema<typeof schema>) {
+  return `Profile data for user ${userId}`;
+}
+```
+
+**Result**: Resource registered as `user-profile` (not `users_[userId]_profile`)
+
+## Prompts Directory
+
+Prompts work the same way as tools and resources:
+
+```typescript
+// src/prompts/review-code.ts
+import { z } from "zod";
+import { type InferSchema, type PromptMetadata } from "xmcp";
+
+export const schema = {
+  code: z.string().describe("The code to review"),
+};
+
+export const metadata: PromptMetadata = {
+  name: "review-code",
+  title: "Review Code",
+  description: "Review code for best practices and potential issues",
+  role: "user",
+};
+
+export default function reviewCode({ code }: InferSchema<typeof schema>) {
+  return `Please review this code for:
+    - Code quality and best practices
+    - Potential bugs or security issues
+    - Performance optimizations
+    - Readability and maintainability
+
+    Code to review:
+    \`\`\`
+    ${code}
+    \`\`\``;
+}
+```
+
+## Resources Directory
+
+Resources can be static data or dynamic content:
+
+```typescript
+// src/resources/database/schema.ts
+import { type ResourceMetadata } from "xmcp";
+
+export const metadata: ResourceMetadata = {
+  name: "database-schema",
+  title: "Database Schema",
+  description: "Current database schema",
+};
+
+export default async function handler() {
+  const tables = await db.introspect();
+  return JSON.stringify(tables, null, 2);
+}
+```
+
+## Naming Conventions
+
+### File Names
+
+- Use **kebab-case** for file names: `create-user.ts`, `send-email.ts`
+- Use **[paramName]** for parameters: `[userId].ts`, `[projectId].ts`
+- Use **(groupName)** for organization: `(admin)/`, `(config)/`
+
+### Generated Names
+
+The compiler generates unique names by:
+
+1. Removing file extension (`.ts`, `.tsx`)
+2. Replacing `/` with `_`
+3. Keeping parameter brackets `[userId]`
+4. Removing route groups `(groupName)`
+5. Adding a hash suffix to ensure uniqueness
+
+**Examples:**
+
+| File Path                                    | Generated Name                        |
+| -------------------------------------------- | ------------------------------------- |
+| `src/tools/greet.ts`                         | `greet_abc123`                        |
+| `src/tools/users/create.ts`                  | `users_create_def456`                 |
+| `src/tools/users/[userId]/profile.ts`        | `users_[userId]_profile_ghi789`       |
+| `src/resources/(config)/app.ts`              | `app_jkl012` (group ignored)          |
+| `src/resources/(users)/[userId]/profile.ts`  | `[userId]_profile_mno345` (group ignored) |
+
+<Note>
+  The hash suffix ensures uniqueness even if multiple files have the same base name. This is computed using MD5 on Node.js and djb2 hash on Cloudflare Workers.
+</Note>
+
+## React Components (TSX)
+
+xmcp supports **React components** for tools with interactive UIs:
+
+```tsx
+// src/tools/image-generator.tsx
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { useState } from "react";
+
+export const schema = {
+  prompt: z.string().describe("Image generation prompt"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "generate-image",
+  description: "Generate an image from a text prompt",
+};
+
+export default function ImageGenerator({ prompt }: InferSchema<typeof schema>) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const generate = async () => {
+    setLoading(true);
+    const response = await fetch("/api/generate", {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    });
+    const { url } = await response.json();
+    setImageUrl(url);
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <h2>Generate Image</h2>
+      <p>Prompt: {prompt}</p>
+      <button onClick={generate} disabled={loading}>
+        {loading ? "Generating..." : "Generate"}
+      </button>
+      {imageUrl && <img src={imageUrl} alt="Generated" />}
+    </div>
+  );
+}
+```
+
+xmcp automatically:
+
+1. Detects `.tsx` files
+2. Transpiles them with SWC
+3. Bundles them separately for client-side use
+4. Makes them available via MCP UI protocol
+
+## File Discovery
+
+The compiler watches for file changes during development:
+
+```typescript
+// From packages/xmcp/src/compiler/index.ts
+watcher.watch(`${toolsPath}/**/*.{ts,tsx}`, {
+  onAdd: async (path) => {
+    toolPaths.add(path);
+    if (compilerStarted) {
+      await generateCode();
+    }
+  },
+  onUnlink: async (path) => {
+    toolPaths.delete(path);
+    if (compilerStarted) {
+      await generateCode();
+    }
+  },
+  onChange: async () => {
+    if (compilerStarted) {
+      await generateCode();
+    }
+  },
+});
+```
+
+**What this means:**
+
+- Add a new file → Automatically discovered and registered
+- Delete a file → Automatically removed from registry
+- Modify a file → Hot reloads in dev mode
+
+## Custom Paths
+
+You can customize the directory paths in `xmcp.config.ts`:
+
+```typescript
+// xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+export default {
+  paths: {
+    tools: "src/my-tools",      // Custom tools directory
+    prompts: "lib/prompts",      // Custom prompts directory
+    resources: false,            // Disable resources
+  },
+} satisfies XmcpConfig;
+```
+
+### Disabling Directories
+
+Set a path to `false` to disable that category:
+
+```typescript
+export default {
+  paths: {
+    tools: "src/tools",
+    prompts: false,    // No prompts
+    resources: false,  // No resources
+  },
+};
+```
+
+## Real-World Examples
+
+### E-commerce Tools
+
+```
+src/tools/
+├── products/
+│   ├── search.ts           → "products_search"
+│   ├── [productId]/
+│   │   ├── details.ts      → "products_[productId]_details"
+│   │   └── reviews.ts      → "products_[productId]_reviews"
+│   └── create.ts           → "products_create"
+├── orders/
+│   ├── [orderId]/
+│   │   ├── status.ts       → "orders_[orderId]_status"
+│   │   └── cancel.ts       → "orders_[orderId]_cancel"
+│   └── create.ts           → "orders_create"
+└── (internal)/
+    └── analytics.ts        → "analytics" (group ignored)
+```
+
+### Multi-tenant SaaS
+
+```
+src/tools/
+├── [tenantId]/
+│   ├── users/
+│   │   ├── list.ts                    → "[tenantId]_users_list"
+│   │   └── [userId]/
+│   │       ├── profile.ts             → "[tenantId]_users_[userId]_profile"
+│   │       └── permissions.ts         → "[tenantId]_users_[userId]_permissions"
+│   └── projects/
+│       ├── list.ts                    → "[tenantId]_projects_list"
+│       └── [projectId]/
+│           └── details.ts             → "[tenantId]_projects_[projectId]_details"
+```
+
+### API Integration
+
+```
+src/tools/
+├── github/
+│   ├── repos/
+│   │   ├── list.ts                    → "github_repos_list"
+│   │   └── [owner]/
+│   │       └── [repo]/
+│   │           ├── issues.ts          → "github_repos_[owner]_[repo]_issues"
+│   │           └── pulls.ts           → "github_repos_[owner]_[repo]_pulls"
+│   └── users/
+│       └── [username].ts              → "github_users_[username]"
+└── slack/
+    ├── channels/
+    │   └── [channelId]/
+    │       └── messages.ts            → "slack_channels_[channelId]_messages"
+    └── users/
+        └── [userId].ts                → "slack_users_[userId]"
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Organize by domain" icon="folder-tree">
+    Group related tools/prompts/resources in subdirectories (e.g., `users/`, `products/`, `analytics/`)
+  </Card>
+
+  <Card title="Use route groups" icon="layer-group">
+    Keep your directory clean with `(admin)`, `(internal)`, `(config)` groups that don't affect naming
+  </Card>
+
+  <Card title="Descriptive file names" icon="file-signature">
+    Use clear, kebab-case names: `create-user.ts`, `send-notification.ts`, `fetch-analytics.ts`
+  </Card>
+
+  <Card title="Parameter validation" icon="shield-check">
+    Always define schemas with Zod to validate parameters and provide descriptions
+  </Card>
+</CardGroup>
+
+## Migration from Manual Registration
+
+If you're coming from manual MCP server registration:
+
+**Before (manual):**
+
+```typescript
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      { name: "greet", description: "Greet user", inputSchema: { ... } },
+      { name: "fetch-data", description: "Fetch data", inputSchema: { ... } },
+    ],
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (request.params.name === "greet") {
+    return await greetHandler(request.params.arguments);
+  }
+  if (request.params.name === "fetch-data") {
+    return await fetchDataHandler(request.params.arguments);
+  }
+});
+```
+
+**After (xmcp file-system routing):**
+
+```typescript
+// src/tools/greet.ts
+export const metadata = { name: "greet", description: "Greet user" };
+export default async function(args) { /* handler */ }
+
+// src/tools/fetch-data.ts
+export const metadata = { name: "fetch-data", description: "Fetch data" };
+export default async function(args) { /* handler */ }
+```
+
+xmcp handles all the MCP protocol boilerplate automatically.

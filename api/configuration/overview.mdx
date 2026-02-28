@@ -1,0 +1,90 @@
+---
+title: Configuration Overview
+description: Complete reference for xmcp configuration options
+---
+
+## XmcpConfig
+
+The main configuration object for xmcp. All fields are optional.
+
+<ParamField path="stdio" type="StdioTransportConfig">
+  STDIO transport configuration. See [STDIO Transport](/api/configuration/stdio) for details.
+</ParamField>
+
+<ParamField path="http" type="HttpTransportConfig">
+  HTTP transport configuration. See [HTTP Transport](/api/configuration/http) for details.
+</ParamField>
+
+<ParamField path="paths" type="PathsConfig">
+  Custom paths for tools, prompts, and resources. See [Paths](/api/configuration/paths) for details.
+</ParamField>
+
+<ParamField path="experimental" type="ExperimentalConfig">
+  Experimental features and adapters. See [Experimental](/api/configuration/experimental) for details.
+</ParamField>
+
+<ParamField path="bundler" type="(config: RspackOptions) => RspackOptions">
+  Custom bundler configuration function. Receives the default Rspack configuration and should return the modified configuration.
+</ParamField>
+
+<ParamField path="template" type="TemplateConfig">
+  Template configuration for code generation.
+</ParamField>
+
+<ParamField path="typescript" type="TypescriptConfig">
+  TypeScript compiler configuration options.
+</ParamField>
+
+## Config File Structure
+
+Create an `xmcp.config.ts` file in your project root:
+
+```typescript
+import type { XmcpConfigInputSchema } from "xmcp";
+
+const config: XmcpConfigInputSchema = {
+  http: {
+    port: 3001,
+    host: "127.0.0.1",
+    endpoint: "/mcp",
+    cors: {
+      origin: "*",
+      credentials: false,
+    },
+  },
+  stdio: true,
+  paths: {
+    tools: "src/tools",
+    prompts: "src/prompts",
+    resources: "src/resources",
+  },
+  experimental: {
+    adapter: "express",
+  },
+};
+
+export default config;
+```
+
+## Boolean Shortcuts
+
+Many configuration options accept boolean values as shortcuts:
+
+- `http: true` - Enable HTTP transport with defaults
+- `http: false` - Disable HTTP transport
+- `stdio: true` - Enable STDIO transport with defaults
+- `stdio: false` - Disable STDIO transport
+
+## Type Exports
+
+```typescript
+import type {
+  XmcpConfigInputSchema,
+  XmcpConfigOutputSchema,
+  HttpTransportConfig,
+  StdioTransportConfig,
+  PathsConfig,
+  ExperimentalConfig,
+  CorsConfig,
+} from "xmcp";
+```

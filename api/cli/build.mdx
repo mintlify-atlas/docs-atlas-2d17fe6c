@@ -1,0 +1,100 @@
+---
+title: 'xmcp build'
+description: 'Build for production deployment'
+icon: 'hammer'
+---
+
+Compile your xmcp server for production deployment with platform-specific optimizations.
+
+## Usage
+
+```bash
+xmcp build [options]
+```
+
+## Options
+
+<ParamField path="--vercel" type="boolean">
+  Build for Vercel deployment. Generates the `.vercel/output` directory structure required by Vercel's Build Output API.
+  
+  This option can also be triggered by setting the `VERCEL` environment variable to `"1"`.
+  
+  <Note>This flag is ignored when using the experimental adapter configuration.</Note>
+</ParamField>
+
+<ParamField path="--cf" type="boolean">
+  Build for Cloudflare Workers deployment. Prepares artifacts optimized for Cloudflare Workers runtime.
+  
+  This option can also be triggered by setting the `CF_PAGES` environment variable to `"1"`.
+</ParamField>
+
+## Examples
+
+Standard production build:
+
+```bash
+xmcp build
+```
+
+Build for Vercel:
+
+```bash
+xmcp build --vercel
+```
+
+Build for Cloudflare Workers:
+
+```bash
+xmcp build --cf
+```
+
+Build for both platforms:
+
+```bash
+xmcp build --vercel --cf
+```
+
+Using environment variables:
+
+```bash
+VERCEL=1 xmcp build
+```
+
+## How it works
+
+The build command:
+
+1. Initializes the compiler context in production mode
+2. Compiles all source files with optimizations
+3. Generates platform-specific output when flags are set
+4. Creates deployment-ready artifacts
+
+### Vercel output
+
+When building with `--vercel`, the command generates:
+
+- `.vercel/output/config.json` - Vercel configuration
+- `.vercel/output/functions/` - Serverless functions
+- `.vercel/output/static/` - Static assets
+
+### Cloudflare output
+
+When building with `--cf`, the command generates:
+
+- Cloudflare Workers compatible bundle
+- Optimized for edge runtime execution
+
+<Tip>
+  Platform flags can be combined in a single build command to prepare for multiple deployment targets.
+</Tip>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="dev" icon="code" href="/api/cli/dev">
+    Start development mode
+  </Card>
+  <Card title="Deployment guides" icon="rocket" href="/deployment/overview">
+    Learn how to deploy your server
+  </Card>
+</CardGroup>

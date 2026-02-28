@@ -1,0 +1,286 @@
+---
+title: Transports
+description: Configure HTTP and STDIO transports for your xmcp MCP server
+---
+
+## Overview
+
+xmcp supports two transport protocols for MCP communication:
+
+- **HTTP Transport** - RESTful API over HTTP/HTTPS, ideal for web clients and remote connections
+- **STDIO Transport** - Standard input/output communication, perfect for local CLI tools and desktop applications
+
+Configure your transport in `xmcp.config.ts` based on your deployment needs.
+
+## HTTP Transport
+
+HTTP transport exposes your MCP server as a RESTful API over HTTP/HTTPS.
+
+### Basic Configuration
+
+```typescript examples/http-transport/xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: {
+    port: 3002,
+  },
+};
+
+export default config;
+```
+
+### Enabling HTTP Transport
+
+Use the `http` key in your config:
+
+```typescript
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  // Simple boolean to use defaults
+  http: true,
+  
+  // Or configure specific options
+  http: {
+    port: 3000,
+  },
+};
+
+export default config;
+```
+
+### HTTP Configuration Options
+
+<ParamField path="http" type="boolean | object">
+  Enable HTTP transport. Use `true` for defaults or an object for custom configuration
+</ParamField>
+
+<ParamField path="http.port" type="number" default="3000">
+  Port number for the HTTP server
+</ParamField>
+
+### Starting the HTTP Server
+
+```bash
+npx xmcp dev
+```
+
+Your server will be available at `http://localhost:3002/mcp` (or your configured port).
+
+### HTTP Endpoints
+
+The HTTP transport automatically creates MCP-compliant endpoints:
+
+- `POST /mcp` - Main MCP protocol endpoint
+- `GET /health` - Health check endpoint
+- `GET /.well-known/oauth-protected-resource` - OAuth discovery (if auth configured)
+
+### Example Tool with HTTP
+
+```typescript examples/http-transport/src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default function greet({ name }: InferSchema<typeof schema>) {
+  return `Hello, ${name}!!`;
+}
+```
+
+### When to Use HTTP
+
+<CardGroup cols={2}>
+  <Card title="Web Applications" icon="browser">
+    Connect from web browsers, React apps, or any HTTP client
+  </Card>
+  <Card title="Remote Access" icon="globe">
+    Access your MCP server from different machines or networks
+  </Card>
+  <Card title="Cloud Deployment" icon="cloud">
+    Deploy to serverless platforms, containers, or cloud providers
+  </Card>
+  <Card title="Authentication" icon="key">
+    Use middleware for API keys, JWT, OAuth, or custom auth
+  </Card>
+</CardGroup>
+
+## STDIO Transport
+
+STDIO transport uses standard input/output for process-to-process communication.
+
+### Basic Configuration
+
+```typescript examples/stdio-transport/xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  stdio: true,
+};
+
+export default config;
+```
+
+### Starting with STDIO
+
+```bash
+npx xmcp dev
+```
+
+The server communicates via stdin/stdout. Client applications spawn this process and communicate through pipes.
+
+### STDIO Communication Flow
+
+1. Client spawns your MCP server as a subprocess
+2. Client sends JSON-RPC messages to stdin
+3. Server processes requests and responds via stdout
+4. Server logs and errors go to stderr
+
+### Example Tool with STDIO
+
+```typescript examples/stdio-transport/src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  const result = `Hello, ${name}!`;
+
+  return {
+    content: [{ type: "text", text: result }],
+  };
+}
+```
+
+### When to Use STDIO
+
+<CardGroup cols={2}>
+  <Card title="Desktop Applications" icon="desktop">
+    Integrate with Electron apps, Claude Desktop, or native applications
+  </Card>
+  <Card title="CLI Tools" icon="terminal">
+    Build command-line tools that communicate via stdin/stdout
+  </Card>
+  <Card title="Local Development" icon="laptop">
+    Fast local testing without network overhead
+  </Card>
+  <Card title="Process Isolation" icon="shield">
+    Each client gets its own isolated server process
+  </Card>
+</CardGroup>
+
+## Dual Transport Support
+
+You can enable both transports simultaneously:
+
+```typescript
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: {
+    port: 3002,
+  },
+  stdio: true,
+};
+
+export default config;
+```
+
+This allows your server to be accessed both locally via STDIO and remotely via HTTP.
+
+## Transport Comparison
+
+| Feature | HTTP | STDIO |
+|---------|------|-------|
+| Remote Access | ✅ Yes | ❌ No (local only) |
+| Authentication | ✅ Middleware support | ⚠️ Limited |
+| Web Browsers | ✅ Yes | ❌ No |
+| Desktop Apps | ⚠️ Via network | ✅ Native |
+| Deployment | ✅ Cloud-ready | ⚠️ Local only |
+| Performance | ⚠️ Network overhead | ✅ Fast IPC |
+| Process Model | Shared server | Isolated per client |
+
+## Development Tips
+
+<CardGroup cols={2}>
+  <Card title="Test Locally First" icon="vial">
+    Use STDIO during development for faster iteration without network setup
+  </Card>
+  <Card title="Deploy with HTTP" icon="rocket">
+    Switch to HTTP for production deployments and cloud hosting
+  </Card>
+  <Card title="Enable Both" icon="sliders">
+    Support both transports for maximum flexibility
+  </Card>
+  <Card title="Use TypeScript" icon="code">
+    Enable `skipTypeCheck: false` in production for type safety
+  </Card>
+</CardGroup>
+
+## TypeScript Configuration
+
+Both examples include TypeScript options:
+
+```typescript examples/http-transport/xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: {
+    port: 3002,
+  },
+  typescript: {
+    skipTypeCheck: true,
+  },
+};
+
+export default config;
+```
+
+<Tip>
+Set `skipTypeCheck: false` in production to catch type errors before deployment.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client Connections" icon="plug" href="/features/client-connections">
+    Connect to other MCP servers as a client
+  </Card>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Secure your HTTP transport with authentication
+  </Card>
+  <Card title="Middleware" icon="filter" href="/features/middleware">
+    Add custom middleware to HTTP transport
+  </Card>
+  <Card title="Deployment" icon="server" href="/deployment/overview">
+    Deploy your MCP server to production
+  </Card>
+</CardGroup>

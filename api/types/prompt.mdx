@@ -1,0 +1,24 @@
+---
+title: Prompt Types
+description: Type definitions for xmcp prompts
+---
+
+## PromptMetadata
+
+Metadata type for defining MCP prompts.
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the prompt
+</ParamField>
+
+<ParamField path="title" type="string" required>
+  Human-readable title for the prompt
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Detailed description of what the prompt does
+</ParamField>
+
+<ParamField path="role" type="string">
+  Optional role specification for the prompt (e.g., "user", "assistant", "system")
+</ParamField>

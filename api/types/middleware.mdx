@@ -1,0 +1,88 @@
+---
+title: Middleware Types
+description: Type definitions for xmcp middleware
+---
+
+## Middleware
+
+Middleware type for Express-compatible request handlers.
+
+```typescript
+type Middleware = RequestHandler | RequestHandlerAndRouter
+```
+
+A middleware can be either:
+- A standard Express `RequestHandler`
+- A `RequestHandlerAndRouter` object containing both middleware and a router
+
+### RequestHandlerAndRouter
+
+Combined middleware and router configuration.
+
+<ParamField path="middleware" type="RequestHandler" required>
+  Express request handler middleware function
+</ParamField>
+
+<ParamField path="router" type="Router" required>
+  Express router instance
+</ParamField>
+
+## WebMiddleware
+
+Middleware type for web-based request handling.
+
+```typescript
+type WebMiddleware = (
+  request: Request,
+  context: WebMiddlewareContext
+) => Promise<Response | void> | Response | void
+```
+
+A function that processes web requests with access to authentication context. Can return:
+- A `Response` object to send immediately
+- `void` to continue to the next middleware
+- A `Promise` resolving to either of the above
+
+<ParamField path="request" type="Request" required>
+  The incoming web request
+</ParamField>
+
+<ParamField path="context" type="WebMiddlewareContext" required>
+  Context object containing authentication information and utilities
+</ParamField>
+
+## WebMiddlewareContext
+
+Context object passed to web middleware functions.
+
+<ParamField path="auth" type="AuthInfo">
+  Current authentication information, if available
+  
+  <ParamField path="auth.token" type="string" required>
+    The access token
+  </ParamField>
+  
+  <ParamField path="auth.clientId" type="string" required>
+    The client ID associated with this token
+  </ParamField>
+  
+  <ParamField path="auth.scopes" type="string[]" required>
+    Scopes associated with this token
+  </ParamField>
+  
+  <ParamField path="auth.expiresAt" type="number">
+    When the token expires (in seconds since epoch)
+  </ParamField>
+  
+  <ParamField path="auth.resource" type="URL">
+    The RFC 8707 resource server identifier for which this token is valid
+  </ParamField>
+  
+  <ParamField path="auth.extra" type="Record<string, unknown>">
+    Additional data associated with the token
+  </ParamField>
+</ParamField>
+
+<ParamField path="setAuth" type="(auth: AuthInfo) => void" required>
+  Function to update the authentication information in the context
+</ParamField>

@@ -1,80 +1,283 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Build your first xmcp app in minutes"
 ---
 
 ## Get started in three steps
 
-Get your documentation site running locally and make your first customization.
+This guide will walk you through creating your first xmcp application, implementing a tool, and testing it.
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Create your xmcp app">
+    Bootstrap a new xmcp application using the CLI:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    <CodeGroup>
 
-### Step 2: Deploy your changes
+    ```bash npm
+    npx create-xmcp-app@latest my-first-app
+    ```
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    ```bash yarn
+    yarn create xmcp-app my-first-app
+    ```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash pnpm
+    pnpm create xmcp-app my-first-app
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    </CodeGroup>
 
-### Step 3: Go live
+    Follow the prompts to configure your project. For this quickstart, select the **TypeScript** template.
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    Navigate to your project directory:
 
-## Next steps
+    ```bash
+    cd my-first-app
+    ```
+  </Step>
 
-Now that you have your docs running, explore these key features:
+  <Step title="Create your first tool">
+    Create a new file `src/tools/greet.ts` with the following code:
+
+    ```typescript src/tools/greet.ts
+    import { z } from "zod";
+    import { type InferSchema, type ToolMetadata } from "xmcp";
+
+    // Define the schema for tool parameters
+    export const schema = {
+      name: z.string().describe("The name of the user to greet"),
+    };
+
+    // Define tool metadata
+    export const metadata: ToolMetadata = {
+      name: "greet",
+      description: "Greet the user",
+      annotations: {
+        title: "Greet the user",
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+      },
+    };
+
+    // Tool implementation
+    export default async function greet({ name }: InferSchema<typeof schema>) {
+      const result = `Hello, ${name}!`;
+
+      return {
+        content: [{ type: "text", text: result }],
+      };
+    }
+    ```
+
+    <Note>
+      **What's happening here?**
+      
+      - **schema**: Defines the input parameters using Zod for validation
+      - **metadata**: Provides information about the tool for MCP clients
+      - **default export**: The tool implementation that returns content
+    </Note>
+  </Step>
+
+  <Step title="Start the development server">
+    Run the xmcp development server with hot reloading:
+
+    <CodeGroup>
+
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+
+    ```bash pnpm
+    pnpm dev
+    ```
+
+    </CodeGroup>
+
+    You should see output indicating your server is running:
+
+    ```bash
+    xmcp dev server starting...
+    ✓ Tools registered: greet
+    ✓ Server ready
+    ```
+
+    <Tip>
+      The dev server watches for file changes and automatically reloads when you modify your tools.
+    </Tip>
+  </Step>
+
+  <Step title="Test your tool">
+    Your tool is now ready to be used by any MCP client. You can test it using:
+
+    ### Using the MCP Inspector
+
+    The MCP Inspector is a great tool for testing your MCP server:
+
+    1. Install the MCP Inspector:
+       ```bash
+       npm install -g @modelcontextprotocol/inspector
+       ```
+
+    2. Run the inspector:
+       ```bash
+       mcp-inspector
+       ```
+
+    3. Connect to your xmcp server and test the `greet` tool
+
+    ### Using Claude Desktop
+
+    To use your tool with Claude Desktop:
+
+    1. Open Claude Desktop configuration:
+       ```bash
+       # macOS
+       open ~/Library/Application\ Support/Claude/claude_desktop_config.json
+
+       # Windows
+       notepad %APPDATA%\Claude\claude_desktop_config.json
+       ```
+
+    2. Add your xmcp server:
+       ```json
+       {
+         "mcpServers": {
+           "my-first-app": {
+             "command": "node",
+             "args": ["/path/to/my-first-app/dist/index.js"]
+           }
+         }
+       }
+       ```
+
+    3. Restart Claude Desktop and ask it to greet someone
+  </Step>
+</Steps>
+
+## Understanding the Tool Structure
+
+Every xmcp tool follows this pattern:
+
+### 1. Schema Definition
+
+Define your tool's input parameters using Zod:
+
+```typescript
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+  age: z.number().optional().describe("The user's age"),
+};
+```
+
+### 2. Metadata
+
+Provide metadata about your tool:
+
+```typescript
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,      // Tool doesn't modify data
+    destructiveHint: false,  // Tool is not destructive
+    idempotentHint: true,    // Same input = same output
+  },
+};
+```
+
+### 3. Implementation
+
+Implement your tool logic:
+
+```typescript
+export default async function greet({ name, age }: InferSchema<typeof schema>) {
+  const greeting = age 
+    ? `Hello, ${name}! You are ${age} years old.`
+    : `Hello, ${name}!`;
+
+  return {
+    content: [{ type: "text", text: greeting }],
+  };
+}
+```
+
+## Add More Tools
+
+Adding more tools is as simple as creating new files in the `src/tools` directory.
+
+Create `src/tools/random-number.ts`:
+
+```typescript src/tools/random-number.ts
+import { type ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "random-number",
+  description: "Generate a random number",
+};
+
+export default async function randomNumber() {
+  const result = Math.random();
+  return {
+    content: [{ type: "text", text: result.toString() }],
+  };
+}
+```
+
+<Tip>
+  xmcp automatically discovers and registers all tools in the `src/tools` directory. No manual registration required!
+</Tip>
+
+## Next Steps
+
+Congratulations! You've built your first xmcp application. Here's what to explore next:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card
+    title="Core Concepts"
+    icon="book"
+    href="/core-concepts/architecture"
+  >
+    Learn about tools, prompts, and resources
+  </Card>
+  <Card
+    title="Middleware"
+    icon="shield"
+    href="/features/middleware"
+  >
+    Add authentication and custom logic
+  </Card>
+  <Card
+    title="Configuration"
+    icon="gear"
+    href="/api/configuration/overview"
+  >
+    Customize your xmcp server
+  </Card>
+  <Card
+    title="Deployment"
+    icon="rocket"
+    href="/deployment/overview"
+  >
+    Deploy your app to production
+  </Card>
 </CardGroup>
 
+## Examples
+
+Explore more examples in the [xmcp GitHub repository](https://github.com/basementstudio/xmcp/tree/main/examples):
+
+- **with-express**: Integration with Express.js
+- **with-nextjs**: Integration with Next.js
+- **with-nestjs**: Integration with NestJS
+- **middlewares-api-key**: API key authentication
+- **http-transport**: HTTP transport examples
+
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  **Need help?** Join the community or report issues on [GitHub](https://github.com/basementstudio/xmcp/issues).
 </Note>

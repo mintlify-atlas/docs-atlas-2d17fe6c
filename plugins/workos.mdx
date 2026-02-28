@@ -1,0 +1,529 @@
+---
+title: WorkOS Plugin
+description: Add enterprise authentication to your xmcp server with WorkOS AuthKit
+---
+
+The WorkOS plugin integrates enterprise-ready authentication with SSO, directory sync, and magic link authentication via WorkOS AuthKit.
+
+## Installation
+
+```bash
+npm install @xmcp-dev/workos
+```
+
+## Features
+
+- OAuth 2.0 with Dynamic Client Registration (DCR)
+- Enterprise SSO (SAML, OIDC)
+- Magic link authentication
+- JWT token verification
+- Access to WorkOS SDK
+- Organization management
+- User management API
+- Directory sync (SCIM)
+
+## Setup
+
+### 1. Configure WorkOS
+
+#### Get API Keys
+
+1. Sign up for [WorkOS](https://workos.com)
+2. Go to [Dashboard](https://dashboard.workos.com)
+3. Navigate to **API Keys**
+4. Copy:
+   - **API Key** (`sk_...`)
+   - **Client ID** (`client_...`)
+
+#### Create AuthKit Environment
+
+1. In WorkOS Dashboard, go to **AuthKit**
+2. Create a new environment or use existing
+3. Note your **AuthKit Domain** (e.g., `authkit-staging-abc123.workos.com`)
+
+#### Configure Redirect URIs
+
+1. In AuthKit settings, add redirect URI:
+   - Development: `http://127.0.0.1:3001/callback`
+   - Production: `https://your-domain.com/callback`
+
+### 2. Environment Variables
+
+Create a `.env` file:
+
+```bash
+# WorkOS Configuration
+WORKOS_API_KEY=sk_test_...
+WORKOS_CLIENT_ID=client_...
+WORKOS_AUTHKIT_DOMAIN=authkit-staging-abc123.workos.com
+
+# Server Configuration
+BASE_URL=http://127.0.0.1:3001
+```
+
+### 3. Create Middleware
+
+Create `src/middleware.ts`:
+
+```typescript
+import { workosProvider } from "@xmcp-dev/workos";
+
+export default workosProvider({
+  apiKey: process.env.WORKOS_API_KEY!,
+  clientId: process.env.WORKOS_CLIENT_ID!,
+  baseURL: process.env.BASE_URL!,
+  authkitDomain: process.env.WORKOS_AUTHKIT_DOMAIN!,
+});
+```
+
+### 4. Configure xmcp
+
+In `xmcp.config.ts`, enable HTTP transport:
+
+```typescript
+import type { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+  paths: {
+    prompts: false,
+    resources: false,
+  },
+};
+
+export default config;
+```
+
+## Configuration
+
+### Required Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `apiKey` | `string` | WorkOS API Key (`sk_...`) |
+| `clientId` | `string` | WorkOS Client ID (`client_...`) |
+| `baseURL` | `string` | Base URL of your MCP server |
+| `authkitDomain` | `string` | WorkOS AuthKit domain |
+
+### Optional Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `docsURL` | `string` | URL to your API documentation |
+
+## Usage in Tools
+
+### Access Session
+
+Get authenticated user's session:
+
+```typescript src/tools/whoami.ts
+import { getSession } from "@xmcp-dev/workos";
+import type { ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "whoami",
+  description: "Get current user session",
+};
+
+export default function whoami() {
+  const session = getSession();
+  
+  return {
+    userId: session.userId,
+    sessionId: session.sessionId,
+    organizationId: session.organizationId,
+    role: session.role,
+    permissions: session.permissions,
+    expiresAt: session.expiresAt,
+  };
+}
+```
+
+### Get User Profile
+
+Fetch full user details from WorkOS:
+
+```typescript
+import { getUser } from "@xmcp-dev/workos";
+import type { ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "get-user-profile",
+  description: "Get user profile",
+};
+
+export default async function getUserProfile() {
+  const user = await getUser();
+  
+  return {
+    userId: user.id,
+    email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    emailVerified: user.emailVerified,
+    profilePictureUrl: user.profilePictureUrl,
+  };
+}
+```
+
+### Use in Tool Logic
+
+```typescript src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { getSession } from "@xmcp-dev/workos";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user with their WorkOS identity",
+};
+
+export default function greet({ name }: InferSchema<typeof schema>): string {
+  const session = getSession();
+
+  return `Hello, ${name}! Your WorkOS user ID is ${session.userId}`;
+}
+```
+
+### Access WorkOS Client
+
+Use the WorkOS SDK for advanced operations:
+
+```typescript src/tools/get-my-memberships.ts
+import { type ToolMetadata } from "xmcp";
+import { getSession, getClient } from "@xmcp-dev/workos";
+
+export const metadata: ToolMetadata = {
+  name: "get-my-memberships",
+  description: "Returns the user's organization memberships",
+};
+
+export default async function getMyMemberships(): Promise<string> {
+  const session = getSession();
+  const client = getClient();
+
+  // Use the WorkOS SDK to fetch organization memberships
+  const memberships = await client.userManagement.listOrganizationMemberships({
+    userId: session.userId,
+  });
+
+  if (memberships.data.length === 0) {
+    return "You are not a member of any organizations.";
+  }
+
+  return JSON.stringify(memberships.data, null, 2);
+}
+```
+
+### Organization Access Control
+
+Check user's organization membership:
+
+```typescript
+import { getSession } from "@xmcp-dev/workos";
+
+export default function requireOrganization() {
+  const session = getSession();
+  
+  if (!session.organizationId) {
+    throw new Error("This tool requires organization membership");
+  }
+  
+  return `Organization: ${session.organizationId}`;
+}
+```
+
+### Role-Based Access
+
+```typescript
+import { getSession } from "@xmcp-dev/workos";
+
+export default function adminOnlyTool() {
+  const session = getSession();
+  
+  if (session.role !== "admin") {
+    throw new Error("Admin role required");
+  }
+  
+  return "Admin action completed";
+}
+```
+
+### Permission-Based Access
+
+```typescript
+import { getSession } from "@xmcp-dev/workos";
+
+export default function checkPermission() {
+  const session = getSession();
+  
+  const hasPermission = session.permissions?.includes("users:manage");
+  
+  if (!hasPermission) {
+    throw new Error("users:manage permission required");
+  }
+  
+  return "Permission granted";
+}
+```
+
+## Session Type
+
+The `getSession()` function returns:
+
+```typescript
+interface Session {
+  userId: string;                      // Unique user identifier
+  sessionId: string;                   // Current session ID
+  organizationId?: string;             // Organization ID (if in org)
+  role?: string;                       // Role in organization
+  permissions?: readonly string[];     // Organization permissions
+  expiresAt: Date;                     // Token expiration time
+  issuedAt: Date;                      // Token issue time
+  claims: JWTClaims;                   // Raw JWT claims
+}
+```
+
+### JWT Claims
+
+```typescript
+interface JWTClaims {
+  sub: string;                     // User ID
+  sid: string;                     // Session ID
+  iss: string;                     // Issuer (WorkOS)
+  org_id?: string;                 // Organization ID
+  role?: string;                   // Organization role
+  permissions?: readonly string[]; // Organization permissions
+  exp: number;                     // Expiration timestamp
+  iat: number;                     // Issued at timestamp
+  aud?: string | readonly string[]; // Audience
+}
+```
+
+## WorkOS SDK
+
+The plugin provides access to the full WorkOS SDK:
+
+### User Management
+
+```typescript
+import { getClient } from "@xmcp-dev/workos";
+
+export default async function listUsers() {
+  const client = getClient();
+  
+  const users = await client.userManagement.listUsers({
+    limit: 10,
+  });
+  
+  return users.data;
+}
+```
+
+### Organizations
+
+```typescript
+import { getClient } from "@xmcp-dev/workos";
+
+export default async function getOrganization(orgId: string) {
+  const client = getClient();
+  
+  const org = await client.organizations.getOrganization(orgId);
+  
+  return {
+    id: org.id,
+    name: org.name,
+    domains: org.domains,
+  };
+}
+```
+
+### Directory Sync
+
+```typescript
+import { getClient } from "@xmcp-dev/workos";
+
+export default async function listDirectoryUsers(directoryId: string) {
+  const client = getClient();
+  
+  const users = await client.directorySync.listUsers({
+    directory: directoryId,
+  });
+  
+  return users.data;
+}
+```
+
+## OAuth Metadata Endpoints
+
+The plugin automatically exposes:
+
+### Resource Metadata
+
+```bash
+GET /.well-known/oauth-protected-resource
+```
+
+Returns:
+
+```json
+{
+  "resource": "http://localhost:3001",
+  "authorization_servers": ["https://authkit-staging-abc123.workos.com"],
+  "bearer_methods_supported": ["header"],
+  "resource_documentation": "https://docs.example.com"
+}
+```
+
+### Authorization Server Metadata
+
+```bash
+GET /.well-known/oauth-authorization-server
+```
+
+Proxies WorkOS AuthKit's OpenID configuration.
+
+## Example Project
+
+Complete example at [`examples/workos-http`](https://github.com/basementstudio/xmcp/tree/main/examples/workos-http):
+
+```typescript title="src/middleware.ts"
+import { workosProvider } from "@xmcp-dev/workos";
+
+export default workosProvider({
+  apiKey: process.env.WORKOS_API_KEY!,
+  clientId: process.env.WORKOS_CLIENT_ID!,
+  baseURL: process.env.BASE_URL!,
+  authkitDomain: process.env.WORKOS_AUTHKIT_DOMAIN!,
+});
+```
+
+```typescript title="src/tools/get-my-memberships.ts"
+import { type ToolMetadata } from "xmcp";
+import { getSession, getClient } from "@xmcp-dev/workos";
+
+export const metadata: ToolMetadata = {
+  name: "get-my-memberships",
+  description: "Returns the user's organization memberships",
+};
+
+export default async function getMyMemberships(): Promise<string> {
+  const session = getSession();
+  const client = getClient();
+
+  const memberships = await client.userManagement.listOrganizationMemberships({
+    userId: session.userId,
+  });
+
+  if (memberships.data.length === 0) {
+    return "You are not a member of any organizations.";
+  }
+
+  return JSON.stringify(memberships.data, null, 2);
+}
+```
+
+## Enterprise SSO
+
+### Configure SSO Connection
+
+1. Go to WorkOS Dashboard → **SSO**
+2. Add a new connection (SAML or OIDC)
+3. Configure your IdP (Okta, Azure AD, etc.)
+4. Test the connection
+
+### SSO in Your App
+
+WorkOS AuthKit handles SSO automatically. Users are redirected to their organization's IdP during login.
+
+## Troubleshooting
+
+### "Missing or invalid bearer token"
+
+The MCP client isn't sending an access token:
+- Verify AuthKit is configured correctly
+- Check redirect URIs match exactly
+- Ensure the client completed the OAuth flow
+
+### "Token has expired"
+
+Access tokens are short-lived. The client should automatically refresh:
+- Disconnect and reconnect in the MCP client
+- Check system clock is accurate
+- Verify refresh token flow is working
+
+### "Token verification failed"
+
+- Verify `WORKOS_API_KEY` is correct
+- Check `WORKOS_AUTHKIT_DOMAIN` matches your AuthKit environment
+- Ensure you're using the correct environment (staging vs production)
+- Verify JWKS endpoint is accessible
+
+### "Client not initialized"
+
+WorkOS client isn't configured:
+- Ensure `workosProvider()` is in `src/middleware.ts`
+- Check all environment variables are set
+- Verify API key format is correct (`sk_...`)
+
+## API Reference
+
+### Functions
+
+#### `workosProvider(config: config): Middleware`
+
+Creates WorkOS authentication middleware.
+
+#### `getSession(): Session`
+
+Returns current authenticated user's session. Must be called within a request context.
+
+#### `getUser(): Promise<User>`
+
+Fetches full user profile from WorkOS API. Returns WorkOS User object.
+
+#### `getClient(): WorkOS`
+
+Returns WorkOS SDK client instance for advanced operations.
+
+### Types
+
+#### `config`
+
+```typescript
+interface config {
+  readonly apiKey: string;
+  readonly clientId: string;
+  readonly baseURL: string;
+  readonly authkitDomain: string;
+  readonly docsURL?: string;
+}
+```
+
+#### `Session`
+
+```typescript
+interface Session {
+  readonly userId: string;
+  readonly sessionId: string;
+  readonly organizationId?: string;
+  readonly role?: string;
+  readonly permissions?: readonly string[];
+  readonly expiresAt: Date;
+  readonly issuedAt: Date;
+  readonly claims: JWTClaims;
+}
+```
+
+## Learn More
+
+- [WorkOS Documentation](https://workos.com/docs)
+- [WorkOS AuthKit](https://workos.com/docs/authkit)
+- [WorkOS User Management](https://workos.com/docs/user-management)
+- [WorkOS Organizations](https://workos.com/docs/organizations)
+- [MCP OAuth Specification](https://spec.modelcontextprotocol.io/specification/2024-11-05/authentication/oauth/)

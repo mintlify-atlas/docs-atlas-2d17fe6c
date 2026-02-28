@@ -1,0 +1,158 @@
+---
+title: Plugins Overview
+description: Extend xmcp with authentication, monetization, and payment plugins
+---
+
+Plugins extend xmcp's functionality by adding authentication, monetization, and payment capabilities to your MCP servers. Each plugin integrates seamlessly with xmcp's middleware system.
+
+## What are Plugins?
+
+xmcp plugins are middleware providers that add functionality to your MCP server. They:
+
+- Integrate with external services (Auth0, Clerk, WorkOS, Polar, etc.)
+- Handle authentication and authorization
+- Enable monetization and payment flows
+- Provide type-safe context to your tools
+- Expose OAuth metadata endpoints for MCP clients
+
+## Available Plugins
+
+### Authentication Plugins
+
+Authentication plugins add user identity and access control to your MCP server:
+
+<CardGroup cols={2}>
+  <Card title="Auth0" icon="shield-halved" href="/plugins/auth0">
+    Enterprise authentication with OAuth 2.0, scopes, and permissions
+  </Card>
+  <Card title="Clerk" icon="user-shield" href="/plugins/clerk">
+    Modern authentication with organizations and role-based access
+  </Card>
+  <Card title="Better Auth" icon="key" href="/plugins/better-auth">
+    Self-hosted authentication with email/password and OAuth providers
+  </Card>
+  <Card title="WorkOS" icon="briefcase" href="/plugins/workos">
+    Enterprise-ready authentication with AuthKit and SSO
+  </Card>
+</CardGroup>
+
+### Monetization Plugins
+
+Monetization plugins enable payment and licensing models:
+
+<CardGroup cols={2}>
+  <Card title="Polar" icon="snowflake" href="/plugins/polar">
+    License key validation and usage-based billing with meter credits
+  </Card>
+  <Card title="x402" icon="dollar-sign" href="/plugins/x402">
+    Pay-per-use pricing with cryptocurrency payments (USDC)
+  </Card>
+</CardGroup>
+
+## Plugin Architecture
+
+All authentication plugins follow a consistent pattern:
+
+### 1. Provider Setup
+
+Create a `middleware.ts` file in your xmcp app:
+
+```typescript
+import { auth0Provider } from "@xmcp-dev/auth0";
+
+export default auth0Provider({
+  domain: process.env.DOMAIN!,
+  audience: process.env.AUDIENCE!,
+  baseURL: process.env.BASE_URL!,
+  clientId: process.env.CLIENT_ID!,
+  clientSecret: process.env.CLIENT_SECRET!,
+});
+```
+
+### 2. OAuth Metadata
+
+Authentication plugins automatically expose:
+
+- `GET /.well-known/oauth-protected-resource` - Resource metadata
+- `GET /.well-known/oauth-authorization-server` - Authorization server metadata
+
+MCP clients use these endpoints for Dynamic Client Registration (DCR).
+
+### 3. Context Access
+
+Access authenticated user data in your tools:
+
+```typescript
+import { getAuthInfo } from "@xmcp-dev/auth0";
+
+export default function myTool() {
+  const authInfo = getAuthInfo();
+  return `Hello, ${authInfo.user.name}!`;
+}
+```
+
+## Choosing a Plugin
+
+### Authentication
+
+**Use Auth0** when you need:
+- Enterprise-grade authentication
+- Fine-grained permissions system
+- M2M (machine-to-machine) authentication
+- Resource Server scopes
+
+**Use Clerk** when you need:
+- Quick setup with minimal configuration
+- Organizations with roles and permissions
+- Beautiful pre-built UI components
+- Modern developer experience
+
+**Use Better Auth** when you need:
+- Self-hosted authentication
+- Full control over your data
+- PostgreSQL-based session management
+- Custom authentication flows
+
+**Use WorkOS** when you need:
+- Enterprise SSO (SAML, OIDC)
+- Directory sync (SCIM)
+- Magic link authentication
+- Multi-tenant applications
+
+### Monetization
+
+**Use Polar** when you need:
+- License key management
+- Usage-based billing with meters
+- Subscription models
+- Checkout integration
+
+**Use x402** when you need:
+- Pay-per-call pricing
+- Cryptocurrency payments (USDC)
+- Instant settlement
+- No subscription management
+
+## Installation
+
+Install any plugin via npm:
+
+```bash
+npm install @xmcp-dev/auth0
+npm install @xmcp-dev/clerk
+npm install @xmcp-dev/better-auth
+npm install @xmcp-dev/workos
+npm install @xmcp-dev/polar
+npm install @xmcp-dev/x402
+```
+
+## Next Steps
+
+Explore individual plugin documentation:
+
+- [Auth0 Plugin](/plugins/auth0)
+- [Clerk Plugin](/plugins/clerk)
+- [Better Auth Plugin](/plugins/better-auth)
+- [WorkOS Plugin](/plugins/workos)
+- [Polar Plugin](/plugins/polar)
+- [x402 Plugin](/plugins/x402)

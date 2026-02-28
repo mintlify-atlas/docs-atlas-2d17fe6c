@@ -1,0 +1,286 @@
+---
+title: Deploy to Vercel
+description: Zero-configuration deployment to Vercel's serverless platform
+---
+
+xmcp provides first-class support for Vercel deployment with automatic build output generation and optimized routing.
+
+## Quick Start
+
+### 1. Build for Vercel
+
+Run the build command with the `--vercel` flag:
+
+```bash
+xmcp build --vercel
+```
+
+This creates a `.vercel/output` directory following Vercel's [Build Output API](https://vercel.com/docs/build-output-api/v3) specification.
+
+### 2. Deploy
+
+Deploy using the Vercel CLI:
+
+```bash
+npm i -g vercel
+vercel deploy
+```
+
+Or connect your Git repository to Vercel for automatic deployments.
+
+## How It Works
+
+The `--vercel` flag triggers the build process defined in `build-vercel-output.ts`:
+
+<CodeGroup>
+
+```typescript Build Process
+// From: packages/xmcp/src/platforms/build-vercel-output.ts
+
+async function buildVercelOutput() {
+  const outputDir = path.join(rootDir, ".vercel", "output");
+  const functionsDir = path.join(outputDir, "functions", "api", "index.func");
+
+  // Create directory structure
+  fs.mkdirSync(outputDir, { recursive: true });
+  fs.mkdirSync(functionsDir, { recursive: true });
+
+  // Copy compiled server files
+  const distDir = path.join(rootDir, "dist");
+  const sourceFile = path.join(distDir, "http.js");
+  const targetFile = path.join(functionsDir, "index.js");
+  
+  fs.copyFileSync(sourceFile, targetFile);
+  
+  // Copy dependencies and package.json
+  const distContents = fs.readdirSync(distDir);
+  for (const item of distContents) {
+    if (item === "http.js" || item === "stdio.js" || item === "auth-ui") continue;
+    // ... copy logic
+  }
+
+  // Copy static assets
+  const staticDir = path.join(outputDir, "static");
+  // ... auth-ui assets handling
+}
+```
+
+</CodeGroup>
+
+## Output Structure
+
+The build process creates the following structure:
+
+```
+.vercel/output/
+├── config.json                 # Routing configuration
+├── functions/
+│   └── api/
+│       └── index.func/
+│           ├── index.js        # Your compiled server
+│           ├── package.json    # Dependencies
+│           ├── .vc-config.json # Function configuration
+│           └── ...             # Bundled modules
+└── static/
+    └── auth/                   # Auth UI assets (if using auth)
+        └── ...
+```
+
+### Function Configuration
+
+The `.vc-config.json` file specifies the runtime:
+
+```json
+{
+  "handler": "index.js",
+  "runtime": "nodejs22.x",
+  "launcherType": "Nodejs",
+  "shouldAddHelpers": true
+}
+```
+
+### Routing Configuration
+
+The `config.json` defines request routing:
+
+```json
+{
+  "version": 3,
+  "routes": [
+    {
+      "src": "^/auth/assets/(.*)$",
+      "dest": "/auth/assets/$1"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "^/auth/(sign-in|callback/.*|index\\.html)?$",
+      "dest": "/auth/index.html"
+    },
+    {
+      "src": "^/(.*)$",
+      "dest": "/api"
+    }
+  ]
+}
+```
+
+This configuration:
+1. Serves static auth assets from `/auth/assets/`
+2. Handles filesystem requests (static files)
+3. Routes auth pages to the auth UI
+4. Routes all other requests to your MCP server at `/api`
+
+## Environment Variables
+
+Configure environment variables in your Vercel project settings or `vercel.json`.
+
+### Example: API Key Authentication
+
+```json vercel.json
+{
+  "env": {
+    "API_KEY": "@api-key-secret"
+  }
+}
+```
+
+Then use in your xmcp config:
+
+```typescript xmcp.config.ts
+import { XmcpConfig, apiKeyAuthMiddleware } from "xmcp";
+
+const config: XmcpConfig = {
+  http: {
+    middlewares: [
+      apiKeyAuthMiddleware({
+        apiKey: process.env.API_KEY!,
+      }),
+    ],
+  },
+};
+
+export default config;
+```
+
+### Common Environment Variables
+
+| Variable | Purpose | Example |
+|----------|---------|----------|
+| `PORT` | Server port (auto-set by Vercel) | `3000` |
+| `API_KEY` | API key for authentication | `your-secret-key` |
+| `JWT_SECRET` | JWT signing secret | `your-jwt-secret` |
+| `VERCEL` | Vercel environment detection | `1` |
+
+<Info>
+  The `VERCEL=1` environment variable is automatically set by Vercel. You don't need to add the `--vercel` flag in your build command when deploying to Vercel.
+</Info>
+
+## Package.json Configuration
+
+Update your `package.json` with build scripts:
+
+```json package.json
+{
+  "scripts": {
+    "dev": "xmcp dev",
+    "build": "xmcp build --vercel",
+    "start": "node dist/http.js"
+  }
+}
+```
+
+<Note>
+  When deploying via Vercel's platform, the `VERCEL=1` environment variable automatically triggers Vercel-specific builds, so you can use `xmcp build` without the flag.
+</Note>
+
+## vercel.json Example
+
+A complete `vercel.json` configuration:
+
+```json vercel.json
+{
+  "buildCommand": "xmcp build",
+  "devCommand": "xmcp dev",
+  "installCommand": "pnpm install",
+  "env": {
+    "API_KEY": "@api-key-secret",
+    "JWT_SECRET": "@jwt-secret"
+  }
+}
+```
+
+## Using with Next.js
+
+If you're integrating xmcp with Next.js, use the adapter approach:
+
+```typescript xmcp.config.ts
+import { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  experimental: {
+    adapter: true,
+  },
+  paths: {
+    tools: "./src/tools",
+  },
+};
+
+export default config;
+```
+
+Then build both:
+
+```json package.json
+{
+  "scripts": {
+    "dev": "xmcp dev & next dev --turbopack",
+    "build": "xmcp build && next build",
+    "start": "next start"
+  }
+}
+```
+
+<Info>
+  When using the adapter, xmcp will not create the `.vercel/output` directory. Instead, it integrates with Next.js's own Vercel deployment.
+</Info>
+
+## Troubleshooting
+
+### Build Fails: "Dist directory not found"
+
+Ensure you run `xmcp build` before `xmcp build --vercel`, or just use `xmcp build --vercel` which includes the standard build:
+
+```bash
+xmcp build --vercel
+```
+
+### Auth UI Not Serving
+
+The auth UI assets are automatically detected from:
+1. `dist/auth-ui/` (if present after build)
+2. `node_modules/@xmcp-dev/better-auth/dist/auth-ui/` (fallback)
+
+Ensure you have the auth package installed if using authentication.
+
+### Routes Not Working
+
+Check the `config.json` routing rules. Custom routes can be added by modifying the build script or creating a custom `vercel.json`.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/features/authentication">
+    Add authentication to your server
+  </Card>
+  <Card title="Cloudflare Workers" icon="cloudflare" href="/deployment/cloudflare-workers">
+    Deploy to Cloudflare instead
+  </Card>
+  <Card title="Middleware" icon="shield" href="/api/types/middleware">
+    Add custom middleware
+  </Card>
+  <Card title="Configuration" icon="gear" href="/api/configuration/overview">
+    Configure your xmcp server
+  </Card>
+</CardGroup>

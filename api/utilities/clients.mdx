@@ -1,0 +1,348 @@
+---
+title: 'MCP Clients'
+description: 'Client utilities for connecting to MCP servers'
+icon: 'plug'
+---
+
+Utilities for creating and managing connections to Model Context Protocol (MCP) servers using HTTP or STDIO transports.
+
+## Import
+
+```typescript
+import {
+  createHTTPClient,
+  createSTDIOClient,
+  listSTDIOClientTools,
+  callSTDIOClientTool,
+  disconnectSTDIOClient,
+} from 'xmcp';
+```
+
+## HTTP Client
+
+### createHTTPClient
+
+Create a direct HTTP connection to an MCP server.
+
+```typescript
+async function createHTTPClient(
+  options: HttpClientOptions
+): Promise<Client<Request, Notification, Result>>
+```
+
+<ParamField path="options" type="object" required>
+  HTTP client configuration options.
+  
+  <Expandable title="properties">
+    <ParamField path="url" type="string" required>
+      Full MCP server base URL. Example: `https://api.example.com/mcp`
+    </ParamField>
+    
+    <ParamField path="headers" type="CustomHeaders">
+      Optional custom headers to include with requests. Supports static headers and environment variable references.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** Promise that resolves to a connected MCP `Client` instance.
+
+#### Example
+
+```typescript
+const client = await createHTTPClient({
+  url: 'https://api.example.com/mcp',
+  headers: {
+    'Authorization': { env: 'API_TOKEN' },
+    'X-Custom-Header': 'value',
+  },
+});
+
+// List available tools
+const tools = await client.listTools();
+console.log(tools.tools.map(t => t.name));
+
+// Call a tool
+const result = await client.callTool({
+  name: 'search',
+  arguments: { query: 'xmcp' },
+});
+```
+
+## STDIO Client
+
+### createSTDIOClient
+
+Spawn and connect to an MCP server via STDIO transport.
+
+```typescript
+async function createSTDIOClient(
+  options: StdioClientOptions
+): Promise<StdioClientConnection>
+```
+
+<ParamField path="options" type="object" required>
+  STDIO client configuration options.
+  
+  <Expandable title="properties">
+    <ParamField path="command" type="string" required>
+      Command to execute for spawning the MCP server process.
+    </ParamField>
+    
+    <ParamField path="args" type="string[]">
+      Arguments to pass to the command.
+    </ParamField>
+    
+    <ParamField path="env" type="Record<string, string>">
+      Environment variables for the spawned process.
+    </ParamField>
+    
+    <ParamField path="cwd" type="string">
+      Working directory for the spawned process.
+    </ParamField>
+    
+    <ParamField path="stderr" type="StdioIOStrategy">
+      How to handle stderr output: `"pipe"`, `"inherit"`, or `"ignore"`. Defaults to `"pipe"`.
+    </ParamField>
+    
+    <ParamField path="onStderrData" type="(chunk: Buffer) => void">
+      Optional callback to handle stderr chunks. Defaults to logging to `console.error`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Returns:** Promise that resolves to a `StdioClientConnection` object containing:
+- `client`: The connected MCP client instance
+- `transport`: The STDIO transport for manual control
+
+#### Example
+
+```typescript
+const connection = await createSTDIOClient({
+  command: 'npx',
+  args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+  stderr: 'pipe',
+  onStderrData: (chunk) => {
+    console.error(`Server stderr: ${chunk.toString()}`);
+  },
+});
+
+// Use the client
+const tools = await connection.client.listTools();
+```
+
+### listSTDIOClientTools
+
+Convenience helper to list all tools available on a STDIO MCP server.
+
+```typescript
+async function listSTDIOClientTools(
+  connection: StdioClientConnection
+): Promise<string[]>
+```
+
+<ParamField path="connection" type="StdioClientConnection" required>
+  The connection object returned from `createSTDIOClient`.
+</ParamField>
+
+**Returns:** Promise that resolves to an array of tool names.
+
+#### Example
+
+```typescript
+const connection = await createSTDIOClient({
+  command: 'node',
+  args: ['server.js'],
+});
+
+const toolNames = await listSTDIOClientTools(connection);
+console.log('Available tools:', toolNames);
+```
+
+### callSTDIOClientTool
+
+Invoke a tool on the connected STDIO MCP server.
+
+```typescript
+async function callSTDIOClientTool(
+  connection: StdioClientConnection,
+  toolName: string,
+  args: Record<string, unknown>
+): Promise<unknown>
+```
+
+<ParamField path="connection" type="StdioClientConnection" required>
+  The connection object returned from `createSTDIOClient`.
+</ParamField>
+
+<ParamField path="toolName" type="string" required>
+  Name of the tool to invoke.
+</ParamField>
+
+<ParamField path="args" type="Record<string, unknown>" required>
+  Arguments to pass to the tool.
+</ParamField>
+
+**Returns:** Promise that resolves to the tool's result.
+
+**Throws:** Error if the tool call fails.
+
+#### Example
+
+```typescript
+const result = await callSTDIOClientTool(
+  connection,
+  'read_file',
+  { path: '/tmp/example.txt' }
+);
+
+console.log('File contents:', result);
+```
+
+### disconnectSTDIOClient
+
+Disconnect the STDIO transport and close the client connection.
+
+```typescript
+async function disconnectSTDIOClient(
+  connection: StdioClientConnection
+): Promise<void>
+```
+
+<ParamField path="connection" type="StdioClientConnection" required>
+  The connection object to disconnect.
+</ParamField>
+
+**Throws:** Error if disconnection fails.
+
+#### Example
+
+```typescript
+try {
+  await disconnectSTDIOClient(connection);
+  console.log('Disconnected successfully');
+} catch (error) {
+  console.error('Failed to disconnect:', error);
+}
+```
+
+## Complete STDIO example
+
+```typescript
+import {
+  createSTDIOClient,
+  listSTDIOClientTools,
+  callSTDIOClientTool,
+  disconnectSTDIOClient,
+} from 'xmcp';
+
+async function main() {
+  // Connect to MCP server
+  const connection = await createSTDIOClient({
+    command: 'npx',
+    args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp'],
+  });
+
+  try {
+    // List available tools
+    const tools = await listSTDIOClientTools(connection);
+    console.log('Available tools:', tools);
+
+    // Call a tool
+    const result = await callSTDIOClientTool(
+      connection,
+      'read_file',
+      { path: '/tmp/data.json' }
+    );
+    console.log('Result:', result);
+  } finally {
+    // Always disconnect when done
+    await disconnectSTDIOClient(connection);
+  }
+}
+
+main().catch(console.error);
+```
+
+## Client identity
+
+All clients created by xmcp use consistent identity information:
+
+```typescript
+{
+  name: 'xmcp',
+  version: '0.0.1' // Package version
+}
+```
+
+## Client capabilities
+
+Clients are initialized with the following MCP capabilities:
+
+- **sampling**: Full support
+- **elicitation**: Full support  
+- **roots**: List changed notifications enabled
+
+## Transport configuration
+
+### HTTP transport
+
+The HTTP client uses `StreamableHTTPClientTransport` with automatic reconnection:
+
+- Initial reconnection delay: 1000ms
+- Max reconnection delay: 30000ms
+- Delay growth factor: 1.5x
+- Max retries: 2
+
+### STDIO transport
+
+The STDIO transport spawns a child process and communicates via stdin/stdout. Stderr is configurable and can be piped, inherited, or ignored.
+
+<Tip>
+  Use `stderr: "pipe"` with `onStderrData` to capture and handle server logs separately from the MCP protocol messages.
+</Tip>
+
+## Type definitions
+
+```typescript
+// HTTP client types
+type HttpClient = Awaited<ReturnType<typeof createHTTPClient>>;
+
+interface HttpClientConfig {
+  name?: string;
+  type?: 'http';
+  url: string;
+  headers?: CustomHeaders;
+}
+
+// STDIO client types
+type StdioClient = StdioClientConnection['client'];
+type StdioIOStrategy = 'pipe' | 'inherit' | 'ignore';
+
+interface StdioClientConfig {
+  name?: string;
+  type?: 'stdio';
+  command?: string;
+  args?: string[];
+  npm?: string;
+  npmArgs?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  stderr?: StdioIOStrategy;
+}
+
+interface StdioClientConnection {
+  client: Client<Request, Notification, Result>;
+  transport: StdioClientTransport;
+}
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Custom headers" icon="heading" href="/features/client-connections">
+    Learn about custom header configuration
+  </Card>
+  <Card title="Client connections" icon="link" href="/features/client-connections">
+    Configure client connections in your server
+  </Card>
+</CardGroup>

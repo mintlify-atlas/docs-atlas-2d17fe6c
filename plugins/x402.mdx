@@ -1,0 +1,619 @@
+---
+title: x402 Plugin
+description: Add pay-per-use pricing with cryptocurrency payments to your xmcp server
+---
+
+The x402 plugin integrates the x402 payment protocol for pay-per-call pricing with instant cryptocurrency payments (USDC).
+
+## Installation
+
+```bash
+npm install @xmcp-dev/x402
+```
+
+## Features
+
+- Pay-per-call tool pricing
+- USDC payments on Base and Base Sepolia
+- Instant payment verification
+- On-chain settlement
+- Payment context in tools
+- Configurable pricing per tool
+- No subscription management required
+
+## Setup
+
+### 1. Get a Wallet Address
+
+You need a wallet address to receive USDC payments:
+
+```bash
+# Your Ethereum/Base wallet address
+X402_WALLET=0x1234567890123456789012345678901234567890
+```
+
+<Warning>
+Never commit your wallet private key. Only store the public address.
+</Warning>
+
+### 2. Environment Variables
+
+Create a `.env` file:
+
+```bash
+# x402 Configuration
+X402_WALLET=0x1234567890123456789012345678901234567890
+
+# Optional: Custom facilitator (default: https://x402.org/facilitator)
+X402_FACILITATOR=https://x402.org/facilitator
+```
+
+### 3. Create Middleware
+
+Create `src/middleware.ts`:
+
+```typescript
+import { x402Provider } from "@xmcp-dev/x402";
+
+export default x402Provider({
+  wallet: process.env.X402_WALLET!,
+  defaults: {
+    price: 0.01,              // Default price in USDC
+    currency: "USDC",
+    network: "base-sepolia",  // Use "base" for production
+  },
+});
+```
+
+### 4. Create Paid Tools
+
+Wrap tool handlers with `paid()`:
+
+```typescript src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid } from "@xmcp-dev/x402";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user (paid tool - $0.01)",
+};
+
+// Use middleware default price ($0.01)
+export default paid(async function greet({ name }: InferSchema<typeof schema>) {
+  return `Hello, ${name}!`;
+});
+```
+
+## Configuration
+
+### Middleware Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `wallet` | `string` | - | Your wallet address to receive payments (required) |
+| `facilitator` | `string` | `https://x402.org/facilitator` | x402 facilitator URL |
+| `debug` | `boolean` | `false` | Enable debug logging |
+| `defaults.price` | `number` | `0.01` | Default price in USDC |
+| `defaults.currency` | `string` | `USDC` | Payment currency |
+| `defaults.network` | `string` | `base` | Blockchain network |
+| `defaults.maxPaymentAge` | `number` | `300` | Maximum payment age in seconds |
+
+### Tool Options
+
+Override defaults per tool:
+
+```typescript
+import { paid } from "@xmcp-dev/x402";
+
+// Custom price
+export default paid(
+  { price: 0.05 },
+  async function expensiveTool(args) {
+    // ...
+  }
+);
+```
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `price` | `number` | Price in USDC |
+| `currency` | `string` | Payment currency |
+| `network` | `string` | Blockchain network |
+| `maxPaymentAge` | `number` | Maximum payment age in seconds |
+| `description` | `string` | Payment description |
+
+## Creating Paid Tools
+
+### Basic Paid Tool
+
+Use middleware defaults:
+
+```typescript src/tools/basic.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid } from "@xmcp-dev/x402";
+
+export const schema = {
+  input: z.string().describe("Input data"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "basic-tool",
+  description: "Basic paid tool (uses default $0.01)",
+};
+
+export default paid(async function basicTool({ input }: InferSchema<typeof schema>) {
+  return `Processed: ${input}`;
+});
+```
+
+### Custom Price
+
+Override the default price:
+
+```typescript src/tools/premium.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid } from "@xmcp-dev/x402";
+
+export const schema = {
+  data: z.string().describe("Data to process"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "premium-tool",
+  description: "Premium tool (costs $0.10)",
+};
+
+export default paid(
+  { price: 0.10 },
+  async function premiumTool({ data }: InferSchema<typeof schema>) {
+    // Premium processing logic
+    return `Premium result: ${data.toUpperCase()}`;
+  }
+);
+```
+
+### Access Payment Context
+
+Get payment details in your tool:
+
+```typescript src/tools/with-context.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid, payment } from "@xmcp-dev/x402";
+
+export const schema = {
+  data: z.string().describe("Data to analyze"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "premium-analysis",
+  description: "Premium data analysis tool",
+};
+
+export default paid(
+  { price: 0.10 },
+  async function premiumAnalysis({ data }: InferSchema<typeof schema>) {
+    // Get payment context
+    const { payer, amount, network, transactionHash } = payment();
+
+    return {
+      analysis: `Analyzed: ${data}`,
+      payment: {
+        paidBy: payer,
+        amount: amount,
+        network: network,
+        txHash: transactionHash,
+      },
+    };
+  }
+);
+```
+
+## Payment Context
+
+Access payment details via `payment()`:
+
+```typescript
+import { payment } from "@xmcp-dev/x402";
+
+const paymentInfo = payment();
+```
+
+### Payment Context Type
+
+```typescript
+interface X402PaymentContext {
+  payer: string;              // Address that made the payment
+  amount: string;             // Amount paid in atomic units
+  network: string;            // Blockchain network (e.g., "base")
+  asset: string;              // Asset/token address (USDC)
+  transactionHash?: string;   // Transaction hash (after settlement)
+  toolName: string;           // Tool name that was paid for
+}
+```
+
+<Warning>
+`payment()` must be called inside a paid tool handler. It will throw an error if called elsewhere.
+</Warning>
+
+## Example Tools
+
+### Hash String Tool
+
+```typescript src/tools/hash-string.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid } from "@xmcp-dev/x402";
+
+export const schema = {
+  input: z.string().min(1).describe("The string to hash"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "hash-string",
+  description: "Hash a string using SHA-256 (paid tool - $0.05)",
+};
+
+export default paid(
+  { price: 0.05 },
+  async function hashString({ input }: InferSchema<typeof schema>) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+);
+```
+
+### Random Number Tool
+
+```typescript src/tools/random-number.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid } from "@xmcp-dev/x402";
+
+export const schema = {
+  min: z.number().int().describe("Minimum value"),
+  max: z.number().int().describe("Maximum value"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "random-number",
+  description: "Generate a random number (paid tool - $0.02)",
+};
+
+export default paid(
+  { price: 0.02 },
+  async function randomNumber({ min, max }: InferSchema<typeof schema>) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+);
+```
+
+## Networks
+
+Supported blockchain networks:
+
+| Network | Chain ID | USDC Address | Use Case |
+|---------|----------|--------------|----------|
+| `base` | `8453` | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | Production |
+| `base-sepolia` | `84532` | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | Testing |
+
+### Network Configuration
+
+```typescript
+// Use Base for production
+export default x402Provider({
+  wallet: process.env.X402_WALLET!,
+  defaults: {
+    network: "base",
+  },
+});
+
+// Use Base Sepolia for testing
+export default x402Provider({
+  wallet: process.env.X402_WALLET!,
+  defaults: {
+    network: "base-sepolia",
+  },
+});
+```
+
+## Payment Flow
+
+The x402 payment protocol flow:
+
+1. **Client calls tool**: MCP client invokes paid tool without payment
+2. **Payment required response**: Server responds with payment requirements
+3. **Client pays**: Client sends USDC transaction on-chain
+4. **Payment verification**: Server verifies payment via facilitator
+5. **Tool execution**: Server executes tool logic
+6. **Settlement**: Payment is settled on-chain
+7. **Response with proof**: Client receives result with transaction hash
+
+### Payment Required Response
+
+When payment is missing or invalid:
+
+```json
+{
+  "structuredContent": {
+    "paymentRequired": true,
+    "price": "0.01",
+    "currency": "USDC",
+    "recipient": "0x1234...",
+    "network": "base",
+    "description": "Payment for greet tool"
+  }
+}
+```
+
+### Payment Response
+
+After successful payment and execution:
+
+```json
+{
+  "result": {
+    "content": [{"type": "text", "text": "Hello, World!"}],
+    "_meta": {
+      "x402/payment-response": {
+        "success": true,
+        "transaction": "0xabc123...",
+        "network": "base",
+        "payer": "0x5678..."
+      }
+    }
+  }
+}
+```
+
+## Example Project
+
+Complete example at [`examples/x402-http`](https://github.com/basementstudio/xmcp/tree/main/examples/x402-http):
+
+```typescript title="src/middleware.ts"
+import { x402Provider } from "@xmcp-dev/x402";
+
+export default x402Provider({
+  wallet: process.env.X402_WALLET!,
+  facilitator: process.env.X402_FACILITATOR ?? "https://x402.org/facilitator",
+  debug: true,
+  defaults: {
+    price: 0.01,
+    currency: "USDC",
+    network: "base-sepolia",
+  },
+});
+```
+
+```typescript title="src/tools/greet.ts"
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid } from "@xmcp-dev/x402";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user (paid tool - $0.01)",
+};
+
+export default paid(async function greet({ name }: InferSchema<typeof schema>) {
+  return `Hello, ${name}!`;
+});
+```
+
+```typescript title="src/tools/hash-string.ts"
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { paid } from "@xmcp-dev/x402";
+
+export const schema = {
+  input: z.string().min(1).describe("The string to hash"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "hash-string",
+  description: "Hash a string using SHA-256 (paid tool - $0.05)",
+};
+
+export default paid(
+  { price: 0.05 },
+  async function hashString({ input }: InferSchema<typeof schema>) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+);
+```
+
+## Testing
+
+### Get Test USDC
+
+For Base Sepolia testing:
+
+1. Get Sepolia ETH from a faucet
+2. Bridge to Base Sepolia
+3. Get test USDC from Base Sepolia faucet
+
+### Test Paid Tools
+
+```bash
+# Start server
+pnpm dev
+
+# Call paid tool (will require payment)
+curl -X POST http://localhost:3001/mcp/v1/tools/call \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "greet",
+      "arguments": { "name": "Alice" }
+    }
+  }'
+
+# Response will include payment requirements
+```
+
+## API Reference
+
+### Functions
+
+#### `x402Provider(config: X402Config): RequestHandler`
+
+Creates x402 payment middleware.
+
+#### `paid(handler: UserToolHandler): PaidHandler`
+
+Wraps tool handler with default payment options.
+
+#### `paid(options: X402ToolOptions, handler: UserToolHandler): PaidHandler`
+
+Wraps tool handler with custom payment options.
+
+#### `payment(): X402PaymentContext`
+
+Returns payment context. Must be called inside paid tool handler.
+
+### Types
+
+#### `X402Config`
+
+```typescript
+interface X402Config {
+  wallet: string;
+  facilitator?: string;
+  debug?: boolean;
+  defaults?: {
+    price?: number;
+    currency?: string;
+    network?: string;
+    maxPaymentAge?: number;
+  };
+}
+```
+
+#### `X402ToolOptions`
+
+```typescript
+interface X402ToolOptions {
+  price?: number;
+  currency?: string;
+  network?: string;
+  maxPaymentAge?: number;
+  description?: string;
+}
+```
+
+#### `X402PaymentContext`
+
+```typescript
+interface X402PaymentContext {
+  payer: string;
+  amount: string;
+  network: string;
+  asset: string;
+  transactionHash?: string;
+  toolName: string;
+}
+```
+
+## Troubleshooting
+
+### "Payment required" error
+
+Client needs to send payment:
+- Ensure client supports x402 protocol
+- Verify wallet has sufficient USDC
+- Check network matches configuration
+
+### "Payment verification failed"
+
+Payment couldn't be verified:
+- Check facilitator URL is correct
+- Verify transaction was broadcast
+- Ensure sufficient confirmations
+- Check network matches payment network
+
+### "Settlement failed"
+
+Payment couldn't be settled:
+- Verify wallet address is correct
+- Check gas fees are sufficient
+- Ensure recipient address is valid
+- Review facilitator logs
+
+### Batch requests not supported
+
+Multiple paid tools in one request:
+- x402 doesn't support batch requests with multiple paid tools
+- Make separate requests for each paid tool
+
+## Best Practices
+
+### 1. Clear Pricing
+
+Include price in tool description:
+
+```typescript
+export const metadata: ToolMetadata = {
+  name: "premium-tool",
+  description: "Premium analysis tool (costs $0.10)",
+};
+```
+
+### 2. Test on Sepolia
+
+Always test on Base Sepolia before production:
+
+```typescript
+defaults: {
+  network: "base-sepolia",
+}
+```
+
+### 3. Reasonable Pricing
+
+Price tools appropriately:
+- Simple operations: $0.01 - $0.05
+- Medium complexity: $0.05 - $0.25
+- Heavy computation: $0.25 - $1.00
+
+### 4. Error Handling
+
+Handle payment failures gracefully:
+
+```typescript
+export default paid(async function myTool(args) {
+  try {
+    // Tool logic
+    return result;
+  } catch (error) {
+    // Log error but don't expose details
+    console.error("Tool failed:", error);
+    throw new Error("Tool execution failed");
+  }
+});
+```
+
+## Learn More
+
+- [x402 Protocol](https://x402.org)
+- [x402 Documentation](https://docs.x402.org)
+- [Base Documentation](https://docs.base.org)
+- [USDC on Base](https://www.coinbase.com/usdc)

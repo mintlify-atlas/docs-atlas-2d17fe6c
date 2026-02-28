@@ -1,0 +1,237 @@
+---
+title: "Installation"
+description: "Set up xmcp in your project"
+---
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js 20.x** or higher
+- **npm**, **yarn**, or **pnpm** package manager
+
+## Quick Install
+
+Install xmcp in your project using your preferred package manager:
+
+<CodeGroup>
+
+```bash npm
+npm install xmcp zod
+```
+
+```bash yarn
+yarn add xmcp zod
+```
+
+```bash pnpm
+pnpm add xmcp zod
+```
+
+</CodeGroup>
+
+<Note>
+  xmcp requires **zod** as a peer dependency for schema validation.
+</Note>
+
+## Create a New Project
+
+The fastest way to get started is to create a new xmcp application using the official CLI:
+
+<Steps>
+  <Step title="Run the create command">
+    Bootstrap a new xmcp application with one command:
+
+    <CodeGroup>
+
+    ```bash npm
+    npx create-xmcp-app@latest
+    ```
+
+    ```bash yarn
+    yarn create xmcp-app
+    ```
+
+    ```bash pnpm
+    pnpm create xmcp-app
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Follow the prompts">
+    The CLI will guide you through the setup process:
+
+    - Choose a project name
+    - Select a template (TypeScript, MCP Apps, GPT Apps)
+    - Choose styling options (default or Tailwind)
+    - Configure your project preferences
+  </Step>
+
+  <Step title="Navigate to your project">
+    ```bash
+    cd your-project-name
+    ```
+  </Step>
+
+  <Step title="Start the development server">
+    <CodeGroup>
+
+    ```bash npm
+    npm run dev
+    ```
+
+    ```bash yarn
+    yarn dev
+    ```
+
+    ```bash pnpm
+    pnpm dev
+    ```
+
+    </CodeGroup>
+
+    Your xmcp server will start with hot reloading enabled.
+  </Step>
+</Steps>
+
+## Add to Existing Project
+
+If you have an existing Next.js or Express project, you can initialize xmcp in it:
+
+<Steps>
+  <Step title="Run the init command">
+    Initialize xmcp in your existing project:
+
+    <CodeGroup>
+
+    ```bash npm
+    npx init-xmcp@latest
+    ```
+
+    ```bash yarn
+    yarn dlx init-xmcp@latest
+    ```
+
+    ```bash pnpm
+    pnpm dlx init-xmcp@latest
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Follow the setup wizard">
+    The init script will:
+
+    - Detect your project type (Next.js, Express, etc.)
+    - Install necessary dependencies
+    - Create the required directory structure
+    - Add example tools and configuration
+  </Step>
+
+  <Step title="Create your configuration">
+    Create an `xmcp.config.ts` file in your project root:
+
+    ```typescript xmcp.config.ts
+    import { defineConfig } from "xmcp";
+
+    export default defineConfig({
+      server: {
+        name: "my-mcp-server",
+        version: "1.0.0",
+      },
+    });
+    ```
+  </Step>
+
+  <Step title="Start building">
+    Start the xmcp development server:
+
+    ```bash
+    xmcp dev
+    ```
+
+    Or add it to your `package.json` scripts:
+
+    ```json package.json
+    {
+      "scripts": {
+        "dev:xmcp": "xmcp dev",
+        "build:xmcp": "xmcp build"
+      }
+    }
+    ```
+  </Step>
+</Steps>
+
+## Project Structure
+
+After installation, your project will have the following structure:
+
+```
+my-xmcp-app/
+├── src/
+│   ├── tools/          # Your tool implementations
+│   ├── prompts/        # Your prompt templates
+│   └── middleware.ts   # Optional middleware
+├── xmcp.config.ts      # xmcp configuration
+├── package.json
+└── tsconfig.json
+```
+
+## Verify Installation
+
+Verify that xmcp is installed correctly:
+
+<CodeGroup>
+
+```bash npm
+npx xmcp --version
+```
+
+```bash yarn
+yarn xmcp --version
+```
+
+```bash pnpm
+pnpm xmcp --version
+```
+
+</CodeGroup>
+
+You should see the version number of xmcp (currently `0.0.3`).
+
+## Next Steps
+
+Now that you have xmcp installed, you're ready to build your first MCP server:
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart Guide"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Build your first tool in minutes
+  </Card>
+  <Card
+    title="Core Concepts"
+    icon="book"
+    href="/core-concepts/architecture"
+  >
+    Learn how xmcp works
+  </Card>
+  <Card
+    title="Configuration"
+    icon="gear"
+    href="/api/configuration/overview"
+  >
+    Configure your xmcp server
+  </Card>
+  <Card
+    title="Examples"
+    icon="code"
+    href="https://github.com/basementstudio/xmcp/tree/main/examples"
+  >
+    Explore example projects
+  </Card>
+</CardGroup>

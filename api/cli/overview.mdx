@@ -1,0 +1,48 @@
+---
+title: 'CLI Overview'
+description: 'Command-line interface for the xmcp framework'
+icon: 'terminal'
+---
+
+The xmcp CLI provides a set of commands to develop, build, and scaffold MCP server components.
+
+## Installation
+
+The CLI is included when you install the xmcp package:
+
+```bash
+npm install xmcp
+```
+
+## Available commands
+
+<CardGroup cols={2}>
+  <Card title="dev" icon="code" href="/api/cli/dev">
+    Start development mode with hot reload
+  </Card>
+  <Card title="build" icon="hammer" href="/api/cli/build">
+    Build for production deployment
+  </Card>
+  <Card title="create" icon="plus" href="/api/cli/create">
+    Scaffold new tools, resources, prompts, or widgets
+  </Card>
+</CardGroup>
+
+## Usage
+
+Run commands using npx or add them to your package.json scripts:
+
+```bash
+npx xmcp dev
+```
+
+Or add to package.json:
+
+```json package.json
+{
+  "scripts": {
+    "dev": "xmcp dev",
+    "build": "xmcp build"
+  }
+}
+```

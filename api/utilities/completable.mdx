@@ -1,0 +1,217 @@
+---
+title: 'completable'
+description: 'Mark prompt arguments as completable for autocomplete support'
+icon: 'input-text'
+---
+
+The `completable` utility marks prompt arguments as supporting autocomplete, allowing AI clients to provide suggestions to users.
+
+## Import
+
+```typescript
+import { completable } from 'xmcp';
+```
+
+<Info>
+  This utility is re-exported from `@modelcontextprotocol/sdk/server/completable` for convenience.
+</Info>
+
+## Usage
+
+Use `completable()` to wrap argument definitions in your prompt schemas to indicate that the client should provide autocomplete suggestions:
+
+```typescript
+import { completable } from 'xmcp';
+
+export const myPrompt = {
+  name: 'code-review',
+  description: 'Generate a code review for a file',
+  arguments: [
+    completable({
+      name: 'file',
+      description: 'Path to the file to review',
+      required: true,
+    }),
+    {
+      name: 'style',
+      description: 'Review style (casual, formal, detailed)',
+      required: false,
+    },
+  ],
+};
+```
+
+## API
+
+```typescript
+function completable<T>(arg: T): T & { completable: true }
+```
+
+<ParamField path="arg" type="T" required>
+  The argument definition object to mark as completable. Typically contains:
+  
+  - `name` (string): Argument name
+  - `description` (string): Argument description
+  - `required` (boolean): Whether the argument is required
+</ParamField>
+
+**Returns:** The same argument object with an additional `completable: true` property.
+
+## How it works
+
+When an argument is marked as completable:
+
+1. The MCP protocol signals to the client that autocomplete is available
+2. The client can request completion suggestions as the user types
+3. Your server can implement a completion handler to provide dynamic suggestions
+4. The client displays suggestions to the user in real-time
+
+## Implementing completion handlers
+
+To provide actual completion suggestions, implement a completion handler in your MCP server:
+
+```typescript
+server.setRequestHandler(CompletionRequest, async (request) => {
+  const { ref, argument } = request.params;
+  
+  if (ref.type === 'ref/prompt' && ref.name === 'code-review') {
+    if (argument.name === 'file') {
+      // Provide file path suggestions
+      const files = await listProjectFiles();
+      return {
+        completion: {
+          values: files.map(file => file.path),
+          hasMore: false,
+        },
+      };
+    }
+  }
+  
+  return { completion: { values: [], hasMore: false } };
+});
+```
+
+## Examples
+
+### Basic completable argument
+
+```typescript
+import { completable } from 'xmcp';
+
+export const searchPrompt = {
+  name: 'search',
+  description: 'Search through resources',
+  arguments: [
+    completable({
+      name: 'query',
+      description: 'Search query',
+      required: true,
+    }),
+  ],
+};
+```
+
+### Multiple completable arguments
+
+```typescript
+import { completable } from 'xmcp';
+
+export const deployPrompt = {
+  name: 'deploy',
+  description: 'Deploy to environment',
+  arguments: [
+    completable({
+      name: 'environment',
+      description: 'Target environment',
+      required: true,
+    }),
+    completable({
+      name: 'branch',
+      description: 'Git branch to deploy',
+      required: true,
+    }),
+    {
+      name: 'force',
+      description: 'Force deployment',
+      required: false,
+    },
+  ],
+};
+```
+
+### Mixed completable and non-completable arguments
+
+```typescript
+import { completable } from 'xmcp';
+
+export const analyzePrompt = {
+  name: 'analyze',
+  description: 'Analyze code metrics',
+  arguments: [
+    completable({
+      name: 'repository',
+      description: 'Repository to analyze',
+      required: true,
+    }),
+    {
+      name: 'metric',
+      description: 'Metric type (complexity, coverage, duplication)',
+      required: true,
+    },
+    {
+      name: 'threshold',
+      description: 'Alert threshold',
+      required: false,
+    },
+  ],
+};
+```
+
+## Use cases
+
+- **File paths**: Suggest available files or directories
+- **Resource URIs**: Provide completions for resource identifiers
+- **Environment names**: Suggest configured environments
+- **Branch names**: Complete Git branch names
+- **Tag names**: Suggest available tags or labels
+- **User names**: Complete user identifiers from your system
+- **Configuration keys**: Suggest valid configuration options
+
+## Client support
+
+Completion support depends on the MCP client implementation. Clients that support the completion protocol will:
+
+- Request completions as users type
+- Display suggestions in a dropdown or inline
+- Allow users to select from suggestions or continue typing
+
+Clients that don't support completions will simply ignore the `completable` marker and treat the argument as a normal text input.
+
+<Tip>
+  Mark arguments as completable even if you haven't implemented the completion handler yet. This makes the prompt more discoverable and indicates to users that autocomplete may be available in the future.
+</Tip>
+
+## Best practices
+
+1. **Mark appropriate arguments**: Use `completable()` for arguments where autocomplete provides value (paths, identifiers, etc.)
+
+2. **Provide good descriptions**: Since clients may show these in autocomplete UI, ensure descriptions are clear
+
+3. **Implement performant handlers**: Completion requests should return quickly (< 100ms)
+
+4. **Limit suggestion counts**: Return a reasonable number of suggestions (typically 10-50)
+
+5. **Support partial matching**: Match suggestions based on partial input
+
+6. **Use hasMore flag**: Set `hasMore: true` when there are more suggestions available
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Prompts" icon="message" href="/building/prompts">
+    Learn about creating prompts
+  </Card>
+  <Card title="MCP Protocol" icon="book" href="/api/utilities/completable">
+    Completion protocol specification
+  </Card>
+</CardGroup>

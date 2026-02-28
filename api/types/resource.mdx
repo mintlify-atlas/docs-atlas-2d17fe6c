@@ -1,0 +1,44 @@
+---
+title: Resource Types
+description: Type definitions for xmcp resources
+---
+
+## ResourceMetadata
+
+Metadata interface for defining MCP resources.
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the resource
+</ParamField>
+
+<ParamField path="title" type="string">
+  Human-readable title for the resource
+</ParamField>
+
+<ParamField path="description" type="string">
+  Detailed description of the resource
+</ParamField>
+
+<ParamField path="mimeType" type="string">
+  MIME type of the resource content (e.g., "text/plain", "application/json")
+</ParamField>
+
+<ParamField path="size" type="number">
+  Size of the resource in bytes
+</ParamField>
+
+<ParamField path="_meta" type="object">
+  Metadata for the resource. Supports nested OpenAI metadata and other vendor extensions.
+  
+  <ParamField path="_meta.openai" type="OpenAIMetadata">
+    OpenAI-specific metadata for resource configuration
+  </ParamField>
+  
+  <ParamField path="_meta[key]" type="unknown">
+    Additional vendor-specific metadata extensions
+  </ParamField>
+</ParamField>
+
+<ParamField path="[key]" type="any">
+  Additional custom properties
+</ParamField>

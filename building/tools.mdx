@@ -1,0 +1,367 @@
+---
+title: Building Tools
+description: Learn how to build MCP tools in xmcp
+---
+
+## What are Tools?
+
+Tools are the core primitives in MCP that allow AI models to perform actions. They represent callable functions that models can invoke with structured arguments to accomplish tasks like fetching data, performing calculations, or interacting with external services.
+
+In xmcp, tools are automatically registered from the `src/tools/` directory using file-system routing.
+
+## Tool Structure
+
+Every tool consists of three main exports:
+
+### 1. Metadata Export
+
+The `metadata` export defines the tool's identity and behavior hints:
+
+```typescript
+import { type ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+```
+
+#### ToolMetadata Type
+
+The `ToolMetadata` interface from `~/workspace/source/packages/xmcp/src/types/tool.ts:19-32` includes:
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the tool
+</ParamField>
+
+<ParamField path="description" type="string" required>
+  Human-readable description of what the tool does
+</ParamField>
+
+<ParamField path="annotations" type="ToolAnnotations">
+  Optional hints about tool behavior:
+  
+  - `title` - Human-readable title for the tool
+  - `readOnlyHint` - If true, the tool does not modify its environment
+  - `destructiveHint` - If true, the tool may perform destructive updates
+  - `idempotentHint` - If true, repeated calls with same args have no additional effect
+  - `openWorldHint` - If true, tool interacts with external entities
+</ParamField>
+
+<ParamField path="_meta" type="object">
+  Metadata for the tool. Supports nested OpenAI metadata and other vendor extensions:
+  
+  ```typescript
+  _meta: {
+    openai?: OpenAIMetadata;
+    ui?: OpenAIMetadata;
+    [key: string]: unknown;
+  }
+  ```
+</ParamField>
+
+### 2. Schema Export
+
+The `schema` export defines the tool's input parameters using Zod:
+
+```typescript
+import { z } from "zod";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+```
+
+<Tip>
+Always use `.describe()` on your Zod schemas to provide clear descriptions for AI models.
+</Tip>
+
+### 3. Default Export (Handler)
+
+The default export is the function that executes when the tool is called:
+
+```typescript
+import { type InferSchema } from "xmcp";
+
+export default function greet({ name }: InferSchema<typeof schema>) {
+  return `Hello, ${name}!!`;
+}
+```
+
+## Real Examples
+
+### Basic Tool: Greet
+
+From `~/workspace/source/examples/http-transport/src/tools/greet.ts:1-25`:
+
+```typescript
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+// Define the schema for tool parameters
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+// Define tool metadata
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+// Tool implementation
+export default function greet({ name }: InferSchema<typeof schema>) {
+  return `Hello, ${name}!!`;
+}
+```
+
+### Async Tool: Hash String
+
+From `~/workspace/source/examples/http-transport/src/tools/hash-string.ts:1-39`:
+
+```typescript
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+
+export const schema = {
+  input: z
+    .string()
+    .min(1, "Input string is required")
+    .describe("The string to hash"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "hash-string",
+  description: "Hash a string using SHA-256",
+};
+
+export default async function hashString({
+  input,
+}: InferSchema<typeof schema>) {
+  if (!input || typeof input !== "string")
+    return {
+      content: [{ type: "text", text: "Invalid input: string required" }],
+    };
+
+  // Use Web Crypto API for SHA-256 hashing
+  async function sha256(str: string) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(str);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+
+  const hash = await sha256(input);
+
+  return {
+    content: [{ type: "text", text: hash }],
+  };
+}
+```
+
+### Tool with Extra Arguments
+
+From `~/workspace/source/examples/template-config/src/tools/extra-arguments.ts:1-24`:
+
+```typescript
+import { type ToolMetadata, type ToolExtraArguments } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "extra-arguments",
+  description: "Access the extra arguments from a tool call",
+  annotations: {
+    title: "Extra arguments",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default async function extraArguments(_, extra: ToolExtraArguments) {
+  const extraArguments = JSON.stringify(extra);
+  const result = `Your extra arguments are: ${extraArguments}`;
+
+  return {
+    content: [{ type: "text", text: result }],
+  };
+}
+```
+
+<Info>
+The second parameter in tool handlers provides access to `ToolExtraArguments`, which includes:
+- `signal` - AbortSignal for request cancellation
+- `authInfo` - Validated access token information
+- `sessionId` - Transport session ID
+- `requestId` - JSON-RPC request ID
+- `requestInfo` - HTTP request headers
+- `sendNotification` - Send notifications
+- `sendRequest` - Send requests to the client
+</Info>
+
+### Complex Tool: Create User
+
+From `~/workspace/source/examples/with-nestjs/src/tools/create-user.ts:1-55`:
+
+```typescript
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { getUsersStore } from "../users/users.store";
+
+export const schema = {
+  name: z
+    .string()
+    .min(2)
+    .describe("The name of the user (minimum 2 characters)"),
+  email: z.email().describe("The email address of the user"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "create-user",
+  description: "Create a new user in the system",
+};
+
+export default async function createUser({
+  name,
+  email,
+}: InferSchema<typeof schema>) {
+  const usersStore = getUsersStore();
+
+  // Check if user with this email already exists
+  const existingUser = usersStore.findByEmail(email);
+  if (existingUser) {
+    return {
+      content: [
+        { type: "text", text: `A user with email "${email}" already exists.` },
+      ],
+      isError: true,
+    };
+  }
+
+  const user = usersStore.create({ name, email });
+
+  return {
+    content: [
+      {
+        type: "text",
+        text: `User created successfully!\n\n${JSON.stringify(
+          {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            createdAt: user.createdAt.toISOString(),
+          },
+          null,
+          2
+        )}`,
+      },
+    ],
+  };
+}
+```
+
+## Creating Tools with CLI
+
+Use the xmcp CLI to quickly scaffold a new tool:
+
+```bash
+xmcp create tool my-tool
+```
+
+This creates a new tool file at `src/tools/my-tool.ts` with the basic structure:
+
+```typescript
+import { z } from "zod";
+import { type ToolMetadata, type InferSchema } from "xmcp";
+
+export const schema = {
+  // Add your parameters here
+};
+
+export const metadata: ToolMetadata = {
+  name: "my-tool",
+  description: "TODO: Add description",
+  annotations: {
+    title: "My Tool",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default function myTool(params: InferSchema<typeof schema>) {
+  // TODO: Implement your tool logic here
+  return "Hello from my-tool!";
+}
+```
+
+<Info>
+You can create tools in nested directories:
+```bash
+xmcp create tool api/users
+```
+This creates `src/tools/api/users.ts`.
+</Info>
+
+## Return Values
+
+Tools can return:
+
+1. **Simple strings** - Will be wrapped in MCP content format
+2. **MCP Content objects** - For structured responses:
+   ```typescript
+   return {
+     content: [{ type: "text", text: "Response text" }],
+     isError: false,
+   };
+   ```
+
+## Best Practices
+
+<Card title="Use Descriptive Names" icon="signature">
+  Choose clear, action-oriented names like `create-user`, `fetch-data`, or `calculate-price`.
+</Card>
+
+<Card title="Add Tool Annotations" icon="tag">
+  Use annotations to help AI models understand tool behavior:
+  - Set `readOnlyHint: true` for tools that don't modify state
+  - Set `destructiveHint: true` for tools that delete or modify data
+  - Set `idempotentHint: true` for tools that are safe to retry
+</Card>
+
+<Card title="Validate Inputs" icon="shield-check">
+  Use Zod's validation features like `.min()`, `.max()`, `.email()` to ensure inputs are valid.
+</Card>
+
+<Card title="Handle Errors Gracefully" icon="triangle-exclamation">
+  Return structured error responses:
+  ```typescript
+  return {
+    content: [{ type: "text", text: "Error message" }],
+    isError: true,
+  };
+  ```
+</Card>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Building Prompts" icon="message" href="/building/prompts">
+    Learn how to create reusable prompt templates
+  </Card>
+  <Card title="Building Resources" icon="folder" href="/building/resources">
+    Create static or dynamic resources for context
+  </Card>
+</CardGroup>

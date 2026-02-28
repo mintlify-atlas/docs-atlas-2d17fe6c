@@ -1,0 +1,72 @@
+---
+title: STDIO Transport
+description: STDIO transport configuration for xmcp
+---
+
+## StdioTransportConfig
+
+Configuration for the STDIO (Standard Input/Output) transport. Accepts either a boolean or an object.
+
+### Boolean Mode
+
+<ParamField path="stdio" type="boolean" default="undefined">
+  - `true` - Enable STDIO transport with defaults
+  - `false` - Disable STDIO transport
+  - `undefined` - Transport is disabled
+</ParamField>
+
+### Object Mode
+
+<ParamField path="debug" type="boolean" default="false">
+  Enable debug logging for the STDIO transport. When enabled, debug messages will be written to stderr.
+</ParamField>
+
+## Examples
+
+### Minimal Configuration
+
+```typescript
+export default {
+  stdio: true, // Enable with defaults
+};
+```
+
+### With Debug Logging
+
+```typescript
+export default {
+  stdio: {
+    debug: true,
+  },
+};
+```
+
+### Disable STDIO
+
+```typescript
+export default {
+  stdio: false,
+};
+```
+
+### Combined Transports
+
+```typescript
+export default {
+  stdio: true,
+  http: {
+    port: 3001,
+  },
+};
+```
+
+## Usage
+
+The STDIO transport is commonly used when running your MCP server as a subprocess. It communicates via standard input and output streams, making it ideal for:
+
+- CLI tools that integrate with MCP
+- Process-based MCP server execution
+- Development and testing workflows
+- Integration with tools that spawn processes
+
+When debug mode is enabled, debug messages are written to stderr to avoid interfering with the STDIO communication protocol on stdout.

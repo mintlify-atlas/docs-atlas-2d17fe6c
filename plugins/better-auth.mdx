@@ -1,0 +1,520 @@
+---
+title: Better Auth Plugin
+description: Add self-hosted authentication to your xmcp server with Better Auth
+---
+
+The Better Auth plugin provides self-hosted authentication with email/password, OAuth providers, and a built-in UI.
+
+## Installation
+
+```bash
+npm install @xmcp-dev/better-auth pg
+```
+
+<Note>
+Better Auth requires PostgreSQL. Install `pg` and `@types/pg` dependencies.
+</Note>
+
+```bash
+npm install -D @types/pg
+```
+
+## Features
+
+- Self-hosted authentication (full data control)
+- Email/password authentication
+- OAuth providers (Google, GitHub, etc.)
+- Built-in authentication UI
+- PostgreSQL session storage
+- OAuth 2.0 with OIDC Provider plugin
+- Dynamic Client Registration (DCR)
+
+## Setup
+
+### 1. Create PostgreSQL Database
+
+Create a PostgreSQL database with the [OIDC Provider schema](https://www.better-auth.com/docs/plugins/oidc-provider#schema).
+
+<Warning>
+Better Auth's CLI schema generation is not yet supported with xmcp. Use the SQL script below.
+</Warning>
+
+```sql
+create table "user" (
+  "id" text not null primary key,
+  "name" text not null,
+  "email" text not null unique,
+  "emailVerified" boolean not null,
+  "image" text,
+  "createdAt" timestamp not null,
+  "updatedAt" timestamp not null
+);
+
+create table "session" (
+  "id" text not null primary key,
+  "expiresAt" timestamp not null,
+  "token" text not null unique,
+  "createdAt" timestamp not null,
+  "updatedAt" timestamp not null,
+  "ipAddress" text,
+  "userAgent" text,
+  "userId" text not null references "user" ("id")
+);
+
+create table "account" (
+  "id" text not null primary key,
+  "accountId" text not null,
+  "providerId" text not null,
+  "userId" text not null references "user" ("id"),
+  "accessToken" text,
+  "refreshToken" text,
+  "idToken" text,
+  "accessTokenExpiresAt" timestamp,
+  "refreshTokenExpiresAt" timestamp,
+  "scope" text,
+  "password" text,
+  "createdAt" timestamp not null,
+  "updatedAt" timestamp not null
+);
+
+create table "verification" (
+  "id" text not null primary key,
+  "identifier" text not null,
+  "value" text not null,
+  "expiresAt" timestamp not null,
+  "createdAt" timestamp,
+  "updatedAt" timestamp
+);
+
+create table "oauthApplication" (
+  "id" text not null primary key,
+  "name" text not null,
+  "icon" text,
+  "metadata" text,
+  "clientId" text not null unique,
+  "clientSecret" text,
+  "redirectURLs" text not null,
+  "type" text not null,
+  "disabled" boolean,
+  "userId" text,
+  "createdAt" timestamp not null,
+  "updatedAt" timestamp not null
+);
+
+create table "oauthAccessToken" (
+  "id" text not null primary key,
+  "accessToken" text not null unique,
+  "refreshToken" text not null unique,
+  "accessTokenExpiresAt" timestamp not null,
+  "refreshTokenExpiresAt" timestamp not null,
+  "clientId" text not null,
+  "userId" text,
+  "scopes" text not null,
+  "createdAt" timestamp not null,
+  "updatedAt" timestamp not null
+);
+
+create table "oauthConsent" (
+  "id" text not null primary key,
+  "clientId" text not null,
+  "userId" text not null,
+  "scopes" text not null,
+  "createdAt" timestamp not null,
+  "updatedAt" timestamp not null,
+  "consentGiven" boolean not null
+);
+```
+
+<Tip>
+We recommend using [Neon](https://neon.tech) with Vercel's storage integration for seamless PostgreSQL hosting.
+</Tip>
+
+### 2. Environment Variables
+
+Create a `.env` file:
+
+```bash
+# Database
+DATABASE_URL=postgresql://<username>:<password>@<host>:<port>/<database>
+
+# Better Auth
+BETTER_AUTH_SECRET=super-secret-key-change-this
+BETTER_AUTH_BASE_URL=http://127.0.0.1:3001
+
+# Optional: Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+```
+
+<Warning>
+Generate a secure random string for `BETTER_AUTH_SECRET`. This is used to sign JWT tokens.
+</Warning>
+
+### 3. Create Middleware
+
+Create `src/middleware.ts`:
+
+```typescript
+import { betterAuthProvider } from "@xmcp-dev/better-auth";
+import { Pool } from "pg";
+
+export default betterAuthProvider({
+  database: new Pool({
+    connectionString: process.env.DATABASE_URL,
+  }),
+  baseURL: process.env.BETTER_AUTH_BASE_URL || "http://127.0.0.1:3001",
+  secret: process.env.BETTER_AUTH_SECRET || "super-secret-key",
+  providers: {
+    emailAndPassword: {
+      enabled: true,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    },
+  },
+});
+```
+
+### 4. Configure xmcp
+
+In `xmcp.config.ts`, enable HTTP transport:
+
+```typescript
+import type { XmcpConfig } from "xmcp";
+
+const config: XmcpConfig = {
+  http: true,
+};
+
+export default config;
+```
+
+## Configuration
+
+### Required Options
+
+| Option | Type | Description |
+|--------|------|-------------|
+| `database` | `Pool` | PostgreSQL connection pool (from `pg` package) |
+| `baseURL` | `string` | Base URL of your MCP server |
+| `secret` | `string` | Secret for signing JWT tokens (use a random string) |
+| `providers` | `object` | Authentication providers configuration |
+
+### Providers Configuration
+
+#### Email and Password
+
+```typescript
+providers: {
+  emailAndPassword: {
+    enabled: true,              // Enable email/password auth
+    disableSignUp?: boolean,    // Disable new user registration
+    minPasswordLength?: number, // Minimum password length (default: 8)
+    maxPasswordLength?: number, // Maximum password length (default: 128)
+  }
+}
+```
+
+#### Google OAuth
+
+```typescript
+providers: {
+  google: {
+    clientId: "your-client-id",
+    clientSecret: "your-client-secret",
+  }
+}
+```
+
+<Accordion title="Configure Google OAuth">
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/apis/dashboard)
+2. Create a new project or select existing
+3. Enable Google+ API
+4. Go to **Credentials** → **Create Credentials** → **OAuth client ID**
+5. Set application type to **Web application**
+6. Add authorized redirect URI:
+   - Development: `http://127.0.0.1:3001/auth/callback/google`
+   - Production: `https://your-domain.com/auth/callback/google`
+7. Copy Client ID and Client Secret to `.env`
+
+</Accordion>
+
+#### Combined Providers
+
+You can enable both email/password and OAuth:
+
+```typescript
+providers: {
+  emailAndPassword: {
+    enabled: true,
+  },
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID!,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+  },
+}
+```
+
+## Usage in Tools
+
+### Access Session
+
+Get authenticated user's session:
+
+```typescript src/tools/whoami.ts
+import { getBetterAuthSession } from "@xmcp-dev/better-auth";
+import type { ToolMetadata } from "xmcp";
+
+export const metadata: ToolMetadata = {
+  name: "whoami",
+  description: "Get current user session",
+};
+
+export default async function whoami() {
+  const session = await getBetterAuthSession();
+  
+  return {
+    userId: session.userId,
+    sessionToken: session.session.token,
+    expiresAt: session.session.expiresAt,
+  };
+}
+```
+
+### Use in Tool Logic
+
+```typescript src/tools/greet.ts
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { getBetterAuthSession } from "@xmcp-dev/better-auth";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  const session = await getBetterAuthSession();
+
+  const result = `Hello, ${name}! Your user id is ${session.userId}`;
+
+  return {
+    content: [{ type: "text", text: result }],
+  };
+}
+```
+
+<Warning>
+`getBetterAuthSession()` will throw an error if called outside of a `betterAuthProvider` middleware context.
+</Warning>
+
+## Authentication UI
+
+Better Auth automatically provides a login/signup UI:
+
+```
+http://localhost:3001/auth/sign-in
+```
+
+The UI is automatically generated based on your provider configuration:
+
+- Email/password form (if `emailAndPassword` is enabled)
+- OAuth provider buttons (if OAuth providers are configured)
+- Sign up and sign in on the same page
+
+### Customization
+
+The UI routes are automatically mounted at `/auth/*`:
+
+- `/auth/sign-in` - Login/signup page
+- `/auth/sign-up` - Alias for sign-in (same page)
+- `/auth/callback/google` - Google OAuth callback
+- `/auth/callback/:provider` - Generic OAuth callback
+
+## Example Project
+
+Complete example at [`examples/better-auth-http`](https://github.com/basementstudio/xmcp/tree/main/examples/better-auth-http):
+
+```typescript title="src/middleware.ts"
+import { betterAuthProvider } from "@xmcp-dev/better-auth";
+import { Pool } from "pg";
+
+export default betterAuthProvider({
+  database: new Pool({
+    connectionString: process.env.DATABASE_URL,
+  }),
+  baseURL: process.env.BETTER_AUTH_BASE_URL || "http://127.0.0.1:3002",
+  secret: process.env.BETTER_AUTH_SECRET || "super-secret-key",
+  providers: {
+    emailAndPassword: {
+      enabled: true,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    },
+  },
+});
+```
+
+```typescript title="src/tools/greet.ts"
+import { z } from "zod";
+import { type InferSchema, type ToolMetadata } from "xmcp";
+import { getBetterAuthSession } from "@xmcp-dev/better-auth";
+
+export const schema = {
+  name: z.string().describe("The name of the user to greet"),
+};
+
+export const metadata: ToolMetadata = {
+  name: "greet",
+  description: "Greet the user",
+  annotations: {
+    title: "Greet the user",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+  },
+};
+
+export default async function greet({ name }: InferSchema<typeof schema>) {
+  const session = await getBetterAuthSession();
+
+  const result = `Hello, ${name}! Your user id is ${session.userId}`;
+
+  return {
+    content: [{ type: "text", text: result }],
+  };
+}
+```
+
+## Database Support
+
+<Warning>
+Currently, only PostgreSQL is supported. Other databases will be added in future releases.
+</Warning>
+
+### Using PostgreSQL
+
+```typescript
+import { Pool } from "pg";
+
+const database = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+```
+
+### Connection Pool Configuration
+
+```typescript
+import { Pool } from "pg";
+
+const database = new Pool({
+  host: "localhost",
+  port: 5432,
+  database: "mydb",
+  user: "myuser",
+  password: "mypassword",
+  max: 20,              // Maximum pool size
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+```
+
+## Troubleshooting
+
+### "Database connection failed"
+
+Check your `DATABASE_URL`:
+- Verify host, port, database, username, and password
+- Ensure PostgreSQL server is running
+- Check firewall rules allow connections
+- Test connection with `psql` or another client
+
+### "Tables do not exist"
+
+Run the schema SQL script:
+- Copy the schema from Setup section
+- Execute in your PostgreSQL database
+- Verify all 7 tables are created
+
+### "Secret is required"
+
+Set `BETTER_AUTH_SECRET` environment variable:
+- Generate a random string (32+ characters)
+- Add to `.env` file
+- Restart the server
+
+### Login page not found
+
+Verify the server is running and HTTP transport is enabled:
+- Check `xmcp.config.ts` has `http: true`
+- Visit `http://localhost:3001/auth/sign-in`
+- Check server logs for errors
+
+### Google OAuth redirect error
+
+Verify redirect URI in Google Cloud Console:
+- Must exactly match: `http://127.0.0.1:3001/auth/callback/google`
+- For production: `https://your-domain.com/auth/callback/google`
+- Check `baseURL` in middleware configuration
+
+## API Reference
+
+### Functions
+
+#### `betterAuthProvider(config: BetterAuthConfig): Middleware`
+
+Creates Better Auth authentication middleware.
+
+#### `getBetterAuthSession(): Promise<Session>`
+
+Returns current authenticated user's session. Must be called within a request context. Throws error if no session.
+
+### Types
+
+#### `BetterAuthConfig`
+
+```typescript
+interface BetterAuthConfig {
+  database: Pool;              // PostgreSQL connection pool
+  baseURL: string;             // Base URL of MCP server
+  secret: string;              // JWT signing secret
+  providers?: {
+    emailAndPassword?: EmailAndPassword;
+    google?: {
+      clientId: string;
+      clientSecret: string;
+    };
+  };
+}
+```
+
+#### `EmailAndPassword`
+
+```typescript
+interface EmailAndPassword {
+  enabled: boolean;
+  disableSignUp?: boolean;
+  maxPasswordLength?: number;  // Default: 128
+  minPasswordLength?: number;  // Default: 8
+}
+```
+
+## Learn More
+
+- [Better Auth Documentation](https://www.better-auth.com/docs)
+- [Better Auth OIDC Provider](https://www.better-auth.com/docs/plugins/oidc-provider)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)

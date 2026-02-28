@@ -1,0 +1,160 @@
+---
+title: 'xmcp create'
+description: 'Scaffold new tools, resources, prompts, or widgets'
+icon: 'plus'
+---
+
+Scaffold new MCP server components with pre-configured templates.
+
+## Usage
+
+```bash
+xmcp create <type> <name> [options]
+```
+
+## Arguments
+
+<ParamField path="type" type="string" required>
+  Type of component to create. Must be one of:
+  
+  - `tool` - MCP tool for performing actions
+  - `resource` - MCP resource for exposing data
+  - `prompt` - MCP prompt template
+  - `widget` - Interactive UI widget component
+</ParamField>
+
+<ParamField path="name" type="string" required>
+  Name of the component to create. Will be converted to kebab-case for the filename.
+  
+  Supports nested paths like `api/users` to create files in subdirectories.
+</ParamField>
+
+## Options
+
+<ParamField path="-d, --dir" type="string">
+  Custom output directory for the generated file.
+  
+  If not specified, uses default directories:
+  - Tools: `src/tools/`
+  - Resources: `src/resources/`
+  - Prompts: `src/prompts/`
+  - Widgets: `src/tools/`
+</ParamField>
+
+## Examples
+
+Create a new tool:
+
+```bash
+xmcp create tool send-email
+```
+
+Create a resource:
+
+```bash
+xmcp create resource user-profile
+```
+
+Create a prompt:
+
+```bash
+xmcp create prompt code-review
+```
+
+Create a widget:
+
+```bash
+xmcp create widget dashboard
+```
+
+Create with custom directory:
+
+```bash
+xmcp create tool database-query --dir src/custom
+```
+
+Create in nested path:
+
+```bash
+xmcp create tool api/fetch-data
+```
+
+## Generated files
+
+### Tool template
+
+Generates a TypeScript file in `src/tools/` with:
+
+- Tool definition function
+- Type-safe parameter schema
+- Handler implementation stub
+- JSDoc comments
+
+```typescript src/tools/send-email.ts
+// Auto-generated tool template
+```
+
+### Resource template
+
+Generates a TypeScript file in `src/resources/` with:
+
+- Resource definition function
+- URI template
+- Handler implementation stub
+
+```typescript src/resources/user-profile.ts
+// Auto-generated resource template
+```
+
+### Prompt template
+
+Generates a TypeScript file in `src/prompts/` with:
+
+- Prompt definition function
+- Message template
+- Parameter placeholders
+
+```typescript src/prompts/code-review.ts
+// Auto-generated prompt template
+```
+
+### Widget template
+
+Generates a TSX file in `src/tools/` with:
+
+- React component structure
+- Widget props interface
+- Basic UI scaffold
+
+```tsx src/tools/dashboard.tsx
+// Auto-generated widget template
+```
+
+## File naming
+
+All generated files use kebab-case naming:
+
+- Input: `SendEmail` → Output: `send-email.ts`
+- Input: `userProfile` → Output: `user-profile.ts`
+- Input: `DatabaseQuery` → Output: `database-query.ts`
+
+<Info>
+  The create command will not overwrite existing files. If a file already exists at the target path, the command will exit with an error.
+</Info>
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Tools" icon="wrench" href="/building/tools">
+    Learn about creating tools
+  </Card>
+  <Card title="Resources" icon="database" href="/building/resources">
+    Learn about creating resources
+  </Card>
+  <Card title="Prompts" icon="message" href="/building/prompts">
+    Learn about creating prompts
+  </Card>
+  <Card title="Widgets" icon="window" href="/building/widgets">
+    Learn about creating widgets
+  </Card>
+</CardGroup>

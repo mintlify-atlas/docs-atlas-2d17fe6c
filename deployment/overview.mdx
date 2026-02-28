@@ -1,0 +1,129 @@
+---
+title: Deployment Overview
+description: Deploy your xmcp server to production environments
+---
+
+xmcp provides multiple deployment options to suit your infrastructure needs. The framework includes built-in build commands and platform-specific optimizations for seamless deployment.
+
+## Deployment Options
+
+xmcp supports three primary deployment strategies:
+
+<CardGroup cols={3}>
+  <Card title="Vercel" icon="triangle" href="/deployment/vercel">
+    Zero-config deployment to Vercel's serverless platform
+  </Card>
+  <Card title="Cloudflare Workers" icon="cloudflare" href="/deployment/cloudflare-workers">
+    Edge deployment with Cloudflare Workers
+  </Card>
+  <Card title="Self-Hosting" icon="server" href="/deployment/self-hosting">
+    Deploy to your own infrastructure with Docker or Node.js
+  </Card>
+</CardGroup>
+
+## Build Command
+
+The `xmcp build` command compiles your server for production:
+
+```bash
+xmcp build
+```
+
+This command:
+- Compiles TypeScript to JavaScript
+- Bundles all dependencies
+- Generates optimized output in `dist/`
+- Creates both HTTP (`dist/http.js`) and stdio (`dist/stdio.js`) entry points
+
+### Output Structure
+
+After running `xmcp build`, you'll find:
+
+```
+dist/
+├── http.js       # HTTP transport server
+├── stdio.js      # stdio transport server
+├── index.js      # Main server logic
+└── ...           # Additional bundled modules
+```
+
+## Platform-Specific Builds
+
+xmcp provides platform-specific build flags for optimized deployment:
+
+### Vercel
+
+```bash
+xmcp build --vercel
+```
+
+Creates a `.vercel/output` directory with Vercel's Build Output API structure.
+
+<Info>
+  The `--vercel` flag is automatically detected when `VERCEL=1` environment variable is set.
+</Info>
+
+### Cloudflare Workers
+
+```bash
+xmcp build --cf
+```
+
+Generates a `worker.js` file bundled for Cloudflare Workers runtime.
+
+<Info>
+  The `--cf` flag is automatically detected when `CF_PAGES=1` environment variable is set.
+</Info>
+
+## Environment Detection
+
+xmcp automatically detects the deployment platform using environment variables:
+
+| Platform | Environment Variable | Auto-detected |
+|----------|---------------------|---------------|
+| Vercel | `VERCEL=1` | Yes |
+| Cloudflare | `CF_PAGES=1` | Yes |
+| Self-hosted | None | Default |
+
+This means you don't need to specify build flags in your CI/CD pipelines—xmcp will automatically use the correct build configuration.
+
+## Running in Production
+
+After building, run your server:
+
+### HTTP Transport
+
+```bash
+node dist/http.js
+```
+
+### stdio Transport
+
+```bash
+node dist/stdio.js
+```
+
+### Custom Port
+
+Set the `PORT` environment variable (defaults to `3001`):
+
+```bash
+PORT=8080 node dist/http.js
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Deploy to Vercel" icon="triangle" href="/deployment/vercel">
+    Learn about zero-config Vercel deployment
+  </Card>
+  <Card title="Deploy to Cloudflare" icon="cloudflare" href="/deployment/cloudflare-workers">
+    Deploy to the edge with Cloudflare Workers
+  </Card>
+  <Card title="Self-Host" icon="server" href="/deployment/self-hosting">
+    Run on your own infrastructure
+  </Card>
+  <Card title="Configuration" icon="gear" href="/api/configuration/overview">
+    Configure your xmcp server
+  </Card>
+</CardGroup>
