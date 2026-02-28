@@ -1,0 +1,153 @@
+{
+  "projectType": "framework",
+  "projectName": "xmcp",
+  "projectDescription": "A TypeScript framework for building and deploying MCP servers with file-system routing and hot reloading",
+  "theme": "palm",
+  "primaryColor": "#8B5CF6",
+  "lightColor": "#A78BFA",
+  "darkColor": "#7C3AED",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "core-concepts/architecture",
+              "core-concepts/file-system-routing",
+              "core-concepts/configuration"
+            ]
+          },
+          {
+            "group": "Building",
+            "pages": [
+              "building/tools",
+              "building/prompts",
+              "building/resources",
+              "building/widgets"
+            ]
+          },
+          {
+            "group": "Adapters",
+            "pages": [
+              "adapters/overview",
+              "adapters/nextjs",
+              "adapters/express",
+              "adapters/nestjs"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "features/middleware",
+              "features/authentication",
+              "features/transports",
+              "features/client-connections"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/vercel",
+              "deployment/cloudflare-workers",
+              "deployment/self-hosting"
+            ]
+          },
+          {
+            "group": "Plugins",
+            "pages": [
+              "plugins/overview",
+              "plugins/auth0",
+              "plugins/clerk",
+              "plugins/better-auth",
+              "plugins/workos",
+              "plugins/polar",
+              "plugins/x402"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Types",
+            "pages": [
+              "api/types/tool",
+              "api/types/prompt",
+              "api/types/resource",
+              "api/types/middleware"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "api/configuration/overview",
+              "api/configuration/http",
+              "api/configuration/stdio",
+              "api/configuration/paths",
+              "api/configuration/experimental"
+            ]
+          },
+          {
+            "group": "CLI",
+            "pages": [
+              "api/cli/overview",
+              "api/cli/dev",
+              "api/cli/build",
+              "api/cli/create"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/utilities/create-context",
+              "api/utilities/clients",
+              "api/utilities/completable"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "File-system routing for tools, prompts, and resources",
+    "Hot reloading in development mode",
+    "Middleware support with built-in auth options",
+    "Multiple framework adapters (Next.js, Express, NestJS)",
+    "HTTP and STDIO transport layers",
+    "Zero-config deployment to Vercel and Cloudflare Workers",
+    "Plugin ecosystem for authentication providers",
+    "TypeScript-first with full type safety"
+  ],
+  "publicApiSurface": [
+    "ToolMetadata",
+    "ToolSchema",
+    "InferSchema",
+    "PromptMetadata",
+    "ResourceMetadata",
+    "Middleware",
+    "WebMiddleware",
+    "XmcpConfig",
+    "apiKeyAuthMiddleware",
+    "jwtAuthMiddleware",
+    "createContext",
+    "createHTTPClient",
+    "createSTDIOClient",
+    "xmcp dev",
+    "xmcp build",
+    "xmcp create",
+    "npx create-xmcp-app",
+    "npx init-xmcp"
+  ]
+}
